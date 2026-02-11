@@ -7,6 +7,9 @@
 #include "core/Sync.h"
 #include "core/Pipeline.h"
 #include "core/Buffer.h"
+#include "input/InputManager.h"
+#include "camera/Camera.h"
+#include "camera/CameraController.h"
 #include "util/Log.h"
 #include "util/Math.h"
 
@@ -40,6 +43,11 @@ int main() {
     CommandPool commandPool(ctx, MAX_FRAMES_IN_FLIGHT);
     Sync        sync(ctx);
 
+    luna::input::InputManager input(ctx.window());
+    luna::camera::Camera camera;
+    camera.setPosition(glm::dvec3(0.0, 0.0, 3.0));
+    luna::camera::CameraController cameraController;
+
     // Test triangle pipeline
     auto pipeline = Pipeline::Builder(ctx, renderPass.handle())
         .setShaders("shaders/test.vert.spv", "shaders/test.frag.spv")
@@ -62,9 +70,28 @@ int main() {
         vertices.data(), sizeof(vertices));
 
     uint32_t currentFrame = 0;
+    double lastTime = glfwGetTime();
 
     while (!glfwWindowShouldClose(ctx.window())) {
         glfwPollEvents();
+        input.update();
+
+        // Delta time
+        double now = glfwGetTime();
+        double dt = now - lastTime;
+        lastTime = now;
+
+        // Toggle cursor capture with right mouse button
+        if (input.isKeyPressed(GLFW_KEY_ESCAPE))
+            input.setCursorCaptured(false);
+        if (glfwGetMouseButton(ctx.window(), GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS &&
+            !input.isCursorCaptured())
+            input.setCursorCaptured(true);
+
+        // Update camera aspect ratio
+        camera.setAspect(static_cast<double>(swapchain.extent().width) /
+                         static_cast<double>(swapchain.extent().height));
+        cameraController.update(camera, input, dt);
 
         VkFence fence = sync.inFlight(currentFrame);
         vkWaitForFences(ctx.device(), 1, &fence, VK_TRUE, UINT64_MAX);
@@ -90,7 +117,7 @@ int main() {
 
         // Reversed-Z: depth clear = 0.0 (far plane)
         std::array<VkClearValue, 2> clearValues{};
-        clearValues[0].color = {{0.1f, 0.1f, 0.1f, 1.0f}};
+        clearValues[0].color = {{0.05f, 0.05f, 0.05f, 1.0f}};
         clearValues[1].depthStencil = {0.0f, 0};
 
         VkRenderPassBeginInfo rpBegin{};
@@ -104,7 +131,6 @@ int main() {
 
         vkCmdBeginRenderPass(cmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
 
-        // Set dynamic viewport and scissor
         VkViewport viewport{};
         viewport.x        = 0.0f;
         viewport.y        = 0.0f;
@@ -119,10 +145,10 @@ int main() {
         scissor.extent = swapchain.extent();
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        // Draw triangle
+        // Draw triangle with camera VP
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle());
 
-        glm::mat4 mvp = glm::mat4(1.0f);
+        glm::mat4 mvp = camera.getViewProjectionMatrix();
         vkCmdPushConstants(cmd, pipeline.layout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                            0, sizeof(glm::mat4), &mvp);
 
