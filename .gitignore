@@ -28,6 +28,7 @@ assets/ephemeris/*.tpc
 # IDE / editor
 .vscode/
 .idea/
+.cache/
 *.swp
 *.swo
 *~
