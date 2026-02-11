@@ -1,0 +1,38 @@
+# Build
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+
+# Compiled shaders
+*.spv
+
+# Assets (downloaded at build time)
+assets/terrain/*.tif
+assets/terrain/*.tiff
+assets/ephemeris/*.bsp
+assets/ephemeris/*.bpc
+assets/ephemeris/*.tls
+assets/ephemeris/*.tpc
+
+# C/C++ artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.lib
+*.exe
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+compile_commands.json
+
+# OS
+.DS_Store
+Thumbs.db
