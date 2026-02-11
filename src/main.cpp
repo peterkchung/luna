@@ -10,6 +10,7 @@
 #include "input/InputManager.h"
 #include "camera/Camera.h"
 #include "camera/CameraController.h"
+#include "scene/Terrain.h"
 #include "util/Log.h"
 #include "util/Math.h"
 
@@ -17,6 +18,7 @@
 #include <GLFW/glfw3.h>
 
 #include <array>
+#include <cstddef>
 
 using namespace luna::core;
 
@@ -26,9 +28,9 @@ static void framebufferResizeCallback(GLFWwindow* /*window*/, int /*w*/, int /*h
     framebufferResized = true;
 }
 
-struct TestVertex {
-    glm::vec3 position;
-    glm::vec3 color;
+struct TerrainPushConstants {
+    glm::mat4 mvp;
+    glm::vec4 sunDirection;
 };
 
 int main() {
@@ -45,29 +47,32 @@ int main() {
 
     luna::input::InputManager input(ctx.window());
     luna::camera::Camera camera;
-    camera.setPosition(glm::dvec3(0.0, 0.0, 3.0));
     luna::camera::CameraController cameraController;
 
-    // Test triangle pipeline
-    auto pipeline = Pipeline::Builder(ctx, renderPass.handle())
-        .setShaders("shaders/test.vert.spv", "shaders/test.frag.spv")
-        .setVertexBinding(sizeof(TestVertex), {
-            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(TestVertex, position)},
-            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(TestVertex, color)},
+    // Initial camera position: ~100m above terrain at 0°N 0°E
+    // At equator (lat=0, lon=0): position is along +X axis
+    double startAlt = luna::util::LUNAR_RADIUS + 100.0;
+    camera.setPosition(glm::dvec3(startAlt, 0.0, 0.0));
+    // Look along -X toward the surface, slightly tilted down
+    camera.setRotation(glm::radians(-15.0), glm::radians(180.0));
+
+    // Terrain pipeline
+    auto terrainPipeline = Pipeline::Builder(ctx, renderPass.handle())
+        .setShaders("shaders/terrain.vert.spv", "shaders/terrain.frag.spv")
+        .setVertexBinding(sizeof(luna::scene::TerrainVertex), {
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(luna::scene::TerrainVertex, position))},
+            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(luna::scene::TerrainVertex, normal))},
         })
         .enableDepthTest()
-        .setPushConstantSize(sizeof(glm::mat4))
+        .setPushConstantSize(sizeof(TerrainPushConstants))
         .build();
 
-    // Triangle vertices
-    std::array<TestVertex, 3> vertices = {{
-        {{ 0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-        {{ 0.5f,  0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-        {{-0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
-    }};
-    auto vertexBuffer = Buffer::createStatic(ctx, commandPool,
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        vertices.data(), sizeof(vertices));
+    // Generate terrain at equator (0°N, 0°E)
+    luna::scene::Terrain terrain(ctx, commandPool);
+
+    // Sun direction (hardcoded: from upper-right in world space)
+    glm::vec3 sunDir3 = glm::normalize(glm::vec3(0.5f, 0.8f, 0.3f));
+    glm::vec4 sunDir(sunDir3, 0.0f);
 
     uint32_t currentFrame = 0;
     double lastTime = glfwGetTime();
@@ -76,19 +81,17 @@ int main() {
         glfwPollEvents();
         input.update();
 
-        // Delta time
         double now = glfwGetTime();
         double dt = now - lastTime;
         lastTime = now;
 
-        // Toggle cursor capture with right mouse button
+        // Cursor capture: right-click to capture, ESC to release
         if (input.isKeyPressed(GLFW_KEY_ESCAPE))
             input.setCursorCaptured(false);
         if (glfwGetMouseButton(ctx.window(), GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS &&
             !input.isCursorCaptured())
             input.setCursorCaptured(true);
 
-        // Update camera aspect ratio
         camera.setAspect(static_cast<double>(swapchain.extent().width) /
                          static_cast<double>(swapchain.extent().height));
         cameraController.update(camera, input, dt);
@@ -115,9 +118,8 @@ int main() {
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         vkBeginCommandBuffer(cmd, &beginInfo);
 
-        // Reversed-Z: depth clear = 0.0 (far plane)
         std::array<VkClearValue, 2> clearValues{};
-        clearValues[0].color = {{0.05f, 0.05f, 0.05f, 1.0f}};
+        clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
         clearValues[1].depthStencil = {0.0f, 0};
 
         VkRenderPassBeginInfo rpBegin{};
@@ -145,17 +147,17 @@ int main() {
         scissor.extent = swapchain.extent();
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        // Draw triangle with camera VP
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle());
+        // Draw terrain
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, terrainPipeline.handle());
 
-        glm::mat4 mvp = camera.getViewProjectionMatrix();
-        vkCmdPushConstants(cmd, pipeline.layout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                           0, sizeof(glm::mat4), &mvp);
+        TerrainPushConstants pc{};
+        pc.mvp = camera.getViewProjectionMatrix();
+        pc.sunDirection = sunDir;
+        vkCmdPushConstants(cmd, terrainPipeline.layout(),
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                           0, sizeof(TerrainPushConstants), &pc);
 
-        VkBuffer buffers[] = { vertexBuffer.handle() };
-        VkDeviceSize offsets[] = { 0 };
-        vkCmdBindVertexBuffers(cmd, 0, 1, buffers, offsets);
-        vkCmdDraw(cmd, 3, 1, 0, 0);
+        terrain.draw(cmd);
 
         vkCmdEndRenderPass(cmd);
         vkEndCommandBuffer(cmd);
