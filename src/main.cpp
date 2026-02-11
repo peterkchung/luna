@@ -5,7 +5,10 @@
 #include "core/RenderPass.h"
 #include "core/CommandPool.h"
 #include "core/Sync.h"
+#include "core/Pipeline.h"
+#include "core/Buffer.h"
 #include "util/Log.h"
+#include "util/Math.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -20,6 +23,11 @@ static void framebufferResizeCallback(GLFWwindow* /*window*/, int /*w*/, int /*h
     framebufferResized = true;
 }
 
+struct TestVertex {
+    glm::vec3 position;
+    glm::vec3 color;
+};
+
 int main() {
     luna::util::Log::init();
     LOG_INFO("Luna starting");
@@ -32,16 +40,35 @@ int main() {
     CommandPool commandPool(ctx, MAX_FRAMES_IN_FLIGHT);
     Sync        sync(ctx);
 
+    // Test triangle pipeline
+    auto pipeline = Pipeline::Builder(ctx, renderPass.handle())
+        .setShaders("shaders/test.vert.spv", "shaders/test.frag.spv")
+        .setVertexBinding(sizeof(TestVertex), {
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(TestVertex, position)},
+            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(TestVertex, color)},
+        })
+        .enableDepthTest()
+        .setPushConstantSize(sizeof(glm::mat4))
+        .build();
+
+    // Triangle vertices
+    std::array<TestVertex, 3> vertices = {{
+        {{ 0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+        {{ 0.5f,  0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+        {{-0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+    }};
+    auto vertexBuffer = Buffer::createStatic(ctx, commandPool,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        vertices.data(), sizeof(vertices));
+
     uint32_t currentFrame = 0;
 
     while (!glfwWindowShouldClose(ctx.window())) {
         glfwPollEvents();
 
-        // Wait for previous frame's fence
         VkFence fence = sync.inFlight(currentFrame);
         vkWaitForFences(ctx.device(), 1, &fence, VK_TRUE, UINT64_MAX);
 
-        // Acquire next swapchain image
         uint32_t imageIndex;
         VkResult result = vkAcquireNextImageKHR(ctx.device(), swapchain.handle(), UINT64_MAX,
                                                  sync.imageAvailable(currentFrame),
@@ -54,7 +81,6 @@ int main() {
 
         vkResetFences(ctx.device(), 1, &fence);
 
-        // Record command buffer
         VkCommandBuffer cmd = commandPool.buffer(currentFrame);
         vkResetCommandBuffer(cmd, 0);
 
@@ -77,6 +103,34 @@ int main() {
         rpBegin.pClearValues      = clearValues.data();
 
         vkCmdBeginRenderPass(cmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
+
+        // Set dynamic viewport and scissor
+        VkViewport viewport{};
+        viewport.x        = 0.0f;
+        viewport.y        = 0.0f;
+        viewport.width    = static_cast<float>(swapchain.extent().width);
+        viewport.height   = static_cast<float>(swapchain.extent().height);
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+        VkRect2D scissor{};
+        scissor.offset = {0, 0};
+        scissor.extent = swapchain.extent();
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        // Draw triangle
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle());
+
+        glm::mat4 mvp = glm::mat4(1.0f);
+        vkCmdPushConstants(cmd, pipeline.layout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                           0, sizeof(glm::mat4), &mvp);
+
+        VkBuffer buffers[] = { vertexBuffer.handle() };
+        VkDeviceSize offsets[] = { 0 };
+        vkCmdBindVertexBuffers(cmd, 0, 1, buffers, offsets);
+        vkCmdDraw(cmd, 3, 1, 0, 0);
+
         vkCmdEndRenderPass(cmd);
         vkEndCommandBuffer(cmd);
 
@@ -97,7 +151,6 @@ int main() {
 
         vkQueueSubmit(ctx.graphicsQueue(), 1, &submitInfo, sync.inFlight(currentFrame));
 
-        // Present
         VkSwapchainKHR swapchains[] = { swapchain.handle() };
         VkPresentInfoKHR presentInfo{};
         presentInfo.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
