@@ -126,6 +126,16 @@ void CubesphereBody::update(const glm::dvec3& cameraPos,
     }
 
     if (!staging.empty()) {
+        // Make transfer writes visible to subsequent vertex/index reads
+        VkMemoryBarrier barrier{};
+        barrier.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
+        vkCmdPipelineBarrier(transferCmd,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+            0, 1, &barrier, 0, nullptr, 0, nullptr);
+
         transferFence_ = cmdPool_->endOneShotWithFence(transferCmd, ctx_->graphicsQueue());
         transferCmd_   = transferCmd;
         pendingStaging_ = std::move(staging);
