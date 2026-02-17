@@ -2,6 +2,8 @@
 
 #include "scene/CubesphereBody.h"
 #include "scene/ChunkGenerator.h"
+#include "core/VulkanContext.h"
+#include "core/CommandPool.h"
 #include "util/Log.h"
 
 #include <cmath>
@@ -20,12 +22,18 @@ CubesphereBody::CubesphereBody(const luna::core::VulkanContext& ctx,
                                const luna::core::CommandPool& cmdPool,
                                double radius)
     : radius_(radius), ctx_(&ctx), cmdPool_(&cmdPool) {
-    // Create 6 root nodes (one per cube face), each covering [-1,1] x [-1,1]
+
+    VkCommandBuffer transferCmd = cmdPool_->beginOneShot();
+    std::vector<luna::core::Buffer> staging;
+
     for (int face = 0; face < 6; face++) {
         roots_[face] = std::make_unique<QuadtreeNode>();
         initNode(*roots_[face], face, -1.0, 1.0, -1.0, 1.0, 0);
-        generateMesh(*roots_[face]);
+        generateMeshBatched(*roots_[face], transferCmd, staging);
     }
+
+    // Submit all 6 root uploads in one batch, block for startup only
+    cmdPool_->endOneShot(transferCmd, ctx_->graphicsQueue());
 
     LOG_INFO("Cubesphere initialized with 6 root nodes");
 }
@@ -74,19 +82,65 @@ void CubesphereBody::generateMesh(QuadtreeNode& node) {
         static_cast<uint32_t>(meshData.indices.size()));
 }
 
+void CubesphereBody::generateMeshBatched(QuadtreeNode& node,
+                                          VkCommandBuffer transferCmd,
+                                          std::vector<luna::core::Buffer>& staging) {
+    auto meshData = ChunkGenerator::generate(
+        node.faceIndex, node.u0, node.u1, node.v0, node.v1, radius_, PATCH_GRID);
+    node.worldCenter = meshData.worldCenter;
+    node.mesh = std::make_unique<Mesh>(
+        *ctx_, transferCmd,
+        meshData.vertices.data(),
+        static_cast<uint32_t>(meshData.vertices.size() * sizeof(ChunkVertex)),
+        meshData.indices.data(),
+        static_cast<uint32_t>(meshData.indices.size()),
+        staging);
+}
+
+void CubesphereBody::retirePendingTransfer() {
+    if (transferFence_ == VK_NULL_HANDLE) return;
+
+    vkWaitForFences(ctx_->device(), 1, &transferFence_, VK_TRUE, UINT64_MAX);
+    vkDestroyFence(ctx_->device(), transferFence_, nullptr);
+    vkFreeCommandBuffers(ctx_->device(), cmdPool_->pool(), 1, &transferCmd_);
+
+    transferFence_ = VK_NULL_HANDLE;
+    transferCmd_   = VK_NULL_HANDLE;
+    pendingStaging_.clear();
+}
+
 void CubesphereBody::update(const glm::dvec3& cameraPos,
                              double fovY, double screenHeight) {
+    // Wait for previous frame's transfers before releasing staging memory
+    retirePendingTransfer();
+
+    VkCommandBuffer transferCmd = cmdPool_->beginOneShot();
+    std::vector<luna::core::Buffer> staging;
+
     uint32_t splitBudget = MAX_SPLITS_PER_FRAME;
     activeNodes_ = 0;
 
     for (auto& root : roots_) {
-        updateNode(*root, cameraPos, fovY, screenHeight, splitBudget);
+        updateNode(*root, cameraPos, fovY, screenHeight, splitBudget,
+                   transferCmd, staging);
+    }
+
+    if (!staging.empty()) {
+        transferFence_ = cmdPool_->endOneShotWithFence(transferCmd, ctx_->graphicsQueue());
+        transferCmd_   = transferCmd;
+        pendingStaging_ = std::move(staging);
+    } else {
+        // No uploads this frame — discard the unused command buffer
+        vkEndCommandBuffer(transferCmd);
+        vkFreeCommandBuffers(ctx_->device(), cmdPool_->pool(), 1, &transferCmd);
     }
 }
 
 void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
                                  double fovY, double screenHeight,
-                                 uint32_t& splitBudget) {
+                                 uint32_t& splitBudget,
+                                 VkCommandBuffer transferCmd,
+                                 std::vector<luna::core::Buffer>& staging) {
     double distance = glm::length(node.worldCenter - cameraPos);
     // Avoid division by zero for camera inside the node's bounding sphere
     distance = glm::max(distance, node.boundingRadius * 0.1);
@@ -117,7 +171,7 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
             initNode(*node.children[3], node.faceIndex, uMid, node.u1, vMid, node.v1, node.depth + 1);
 
             for (auto& child : node.children) {
-                generateMesh(*child);
+                generateMeshBatched(*child, transferCmd, staging);
             }
             splitBudget -= 4;
 
@@ -126,7 +180,8 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
 
             // Recurse into children
             for (auto& child : node.children) {
-                updateNode(*child, cameraPos, fovY, screenHeight, splitBudget);
+                updateNode(*child, cameraPos, fovY, screenHeight, splitBudget,
+                           transferCmd, staging);
             }
         } else {
             activeNodes_++;
@@ -152,7 +207,7 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
         if (allChildrenLeaves && maxChildError < MERGE_THRESHOLD) {
             // Merge: regenerate parent mesh, destroy children
             if (!node.hasMesh()) {
-                generateMesh(node);
+                generateMeshBatched(node, transferCmd, staging);
             }
             for (auto& child : node.children) {
                 child.reset();
@@ -161,7 +216,8 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
         } else {
             // Recurse into children
             for (auto& child : node.children) {
-                if (child) updateNode(*child, cameraPos, fovY, screenHeight, splitBudget);
+                if (child) updateNode(*child, cameraPos, fovY, screenHeight, splitBudget,
+                                      transferCmd, staging);
             }
         }
     }

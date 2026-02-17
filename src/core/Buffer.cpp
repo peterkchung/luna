@@ -114,6 +114,33 @@ Buffer Buffer::createStatic(const VulkanContext& ctx, const CommandPool& cmdPool
     return buffer;
 }
 
+Buffer Buffer::createStaticBatch(const VulkanContext& ctx,
+                                 VkCommandBuffer transferCmd,
+                                 VkBufferUsageFlags usage,
+                                 const void* data, VkDeviceSize size,
+                                 Buffer& stagingOut) {
+    stagingOut = createRaw(
+        ctx.device(), ctx.physicalDevice(), size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    void* mapped;
+    vkMapMemory(ctx.device(), stagingOut.memory_, 0, size, 0, &mapped);
+    std::memcpy(mapped, data, static_cast<size_t>(size));
+    vkUnmapMemory(ctx.device(), stagingOut.memory_);
+
+    auto buffer = createRaw(
+        ctx.device(), ctx.physicalDevice(), size,
+        usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    VkBufferCopy copyRegion{};
+    copyRegion.size = size;
+    vkCmdCopyBuffer(transferCmd, stagingOut.handle(), buffer.handle(), 1, &copyRegion);
+
+    return buffer;
+}
+
 Buffer Buffer::createDynamic(const VulkanContext& ctx, VkBufferUsageFlags usage,
                              VkDeviceSize size) {
     return createRaw(

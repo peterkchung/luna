@@ -64,4 +64,23 @@ void CommandPool::endOneShot(VkCommandBuffer cmd, VkQueue queue) const {
     vkFreeCommandBuffers(device_, pool_, 1, &cmd);
 }
 
+VkFence CommandPool::endOneShotWithFence(VkCommandBuffer cmd, VkQueue queue) const {
+    vkEndCommandBuffer(cmd);
+
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+    VkFence fence;
+    if (vkCreateFence(device_, &fenceInfo, nullptr, &fence) != VK_SUCCESS)
+        throw std::runtime_error("Failed to create transfer fence");
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers    = &cmd;
+
+    vkQueueSubmit(queue, 1, &submitInfo, fence);
+    return fence;
+}
+
 } // namespace luna::core

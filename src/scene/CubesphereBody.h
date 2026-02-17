@@ -3,6 +3,7 @@
 #pragma once
 
 #include "scene/Mesh.h"
+#include "core/Buffer.h"
 #include "util/Math.h"
 #include <array>
 #include <memory>
@@ -58,11 +59,18 @@ private:
     void initNode(QuadtreeNode& node, int face,
                   double u0, double u1, double v0, double v1, uint32_t depth);
     void generateMesh(QuadtreeNode& node);
+    void generateMeshBatched(QuadtreeNode& node, VkCommandBuffer transferCmd,
+                             std::vector<luna::core::Buffer>& staging);
     void updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
-                    double fovY, double screenHeight, uint32_t& splitBudget);
+                    double fovY, double screenHeight, uint32_t& splitBudget,
+                    VkCommandBuffer transferCmd,
+                    std::vector<luna::core::Buffer>& staging);
     void drawNode(const QuadtreeNode& node, VkCommandBuffer cmd, VkPipelineLayout layout,
                   const glm::mat4& viewProj, const glm::dvec3& cameraPos,
                   const glm::vec4& sunDirection, const glm::vec4 frustumPlanes[6]) const;
+
+    // Release previous frame's staging buffers once their transfer is confirmed complete
+    void retirePendingTransfer();
 
     static void extractFrustumPlanes(const glm::mat4& vp, glm::vec4 planes[6]);
     static bool sphereInFrustum(const glm::vec4 planes[6],
@@ -71,9 +79,13 @@ private:
     double radius_;
     std::array<std::unique_ptr<QuadtreeNode>, 6> roots_;
 
-    // Stored for on-the-fly mesh creation
     const luna::core::VulkanContext* ctx_;
     const luna::core::CommandPool*   cmdPool_;
+
+    // Pending transfer from previous frame
+    VkFence                          transferFence_ = VK_NULL_HANDLE;
+    VkCommandBuffer                  transferCmd_   = VK_NULL_HANDLE;
+    std::vector<luna::core::Buffer>  pendingStaging_;
 
     uint32_t activeNodes_ = 0;
 };

@@ -23,6 +23,9 @@ public:
     VkCommandBuffer beginOneShot() const;
     void            endOneShot(VkCommandBuffer cmd, VkQueue queue) const;
 
+    // Submit without blocking. Returns a fence the caller must wait on and destroy.
+    VkFence         endOneShotWithFence(VkCommandBuffer cmd, VkQueue queue) const;
+
 private:
     VkDevice                      device_ = VK_NULL_HANDLE;
     VkCommandPool                 pool_   = VK_NULL_HANDLE;

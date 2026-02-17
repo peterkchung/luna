@@ -23,9 +23,17 @@ public:
     VkBuffer handle() const { return buffer_; }
     VkDeviceSize size() const { return size_; }
 
-    // Upload data to GPU-local memory via staging buffer
+    // Upload data to GPU-local memory via staging buffer (blocks until complete)
     static Buffer createStatic(const VulkanContext& ctx, const CommandPool& cmdPool,
                                VkBufferUsageFlags usage, const void* data, VkDeviceSize size);
+
+    // Record a staging copy into an existing command buffer (no submit, no wait).
+    // Caller must keep stagingOut alive until the command buffer finishes execution.
+    static Buffer createStaticBatch(const VulkanContext& ctx,
+                                    VkCommandBuffer transferCmd,
+                                    VkBufferUsageFlags usage,
+                                    const void* data, VkDeviceSize size,
+                                    Buffer& stagingOut);
 
     // Host-visible buffer for per-frame updates
     static Buffer createDynamic(const VulkanContext& ctx, VkBufferUsageFlags usage,
