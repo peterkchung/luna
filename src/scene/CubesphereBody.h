@@ -58,12 +58,8 @@ private:
     void initNode(QuadtreeNode& node, int face,
                   double u0, double u1, double v0, double v1, uint32_t depth);
     void generateMesh(QuadtreeNode& node);
-    void generateMeshBatched(QuadtreeNode& node, VkCommandBuffer transferCmd,
-                             std::vector<luna::core::Buffer>& staging);
     void updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
-                    double fovY, double screenHeight, uint32_t& splitBudget,
-                    VkCommandBuffer transferCmd,
-                    std::vector<luna::core::Buffer>& staging);
+                    double fovY, double screenHeight, uint32_t& splitBudget);
     void drawNode(const QuadtreeNode& node, VkCommandBuffer cmd, VkPipelineLayout layout,
                   const glm::mat4& viewProj, const glm::dvec3& cameraPos,
                   const glm::vec4& sunDirection, const glm::vec4 frustumPlanes[6]) const;
@@ -75,6 +71,7 @@ private:
     double radius_;
     std::array<std::unique_ptr<QuadtreeNode>, 6> roots_;
 
+    // Stored for on-the-fly mesh creation
     const luna::core::VulkanContext* ctx_;
     const luna::core::CommandPool*   cmdPool_;
 

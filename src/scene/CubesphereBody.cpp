@@ -2,8 +2,6 @@
 
 #include "scene/CubesphereBody.h"
 #include "scene/ChunkGenerator.h"
-#include "core/VulkanContext.h"
-#include "core/CommandPool.h"
 #include "util/Log.h"
 
 #include <cmath>
@@ -22,18 +20,12 @@ CubesphereBody::CubesphereBody(const luna::core::VulkanContext& ctx,
                                const luna::core::CommandPool& cmdPool,
                                double radius)
     : radius_(radius), ctx_(&ctx), cmdPool_(&cmdPool) {
-
-    VkCommandBuffer transferCmd = cmdPool_->beginOneShot();
-    std::vector<luna::core::Buffer> staging;
-
+    // Create 6 root nodes (one per cube face), each covering [-1,1] x [-1,1]
     for (int face = 0; face < 6; face++) {
         roots_[face] = std::make_unique<QuadtreeNode>();
         initNode(*roots_[face], face, -1.0, 1.0, -1.0, 1.0, 0);
-        generateMeshBatched(*roots_[face], transferCmd, staging);
+        generateMesh(*roots_[face]);
     }
-
-    // Submit all 6 root uploads in one batch, block for startup only
-    cmdPool_->endOneShot(transferCmd, ctx_->graphicsQueue());
 
     LOG_INFO("Cubesphere initialized with 6 root nodes");
 }
@@ -82,49 +74,19 @@ void CubesphereBody::generateMesh(QuadtreeNode& node) {
         static_cast<uint32_t>(meshData.indices.size()));
 }
 
-void CubesphereBody::generateMeshBatched(QuadtreeNode& node,
-                                          VkCommandBuffer transferCmd,
-                                          std::vector<luna::core::Buffer>& staging) {
-    auto meshData = ChunkGenerator::generate(
-        node.faceIndex, node.u0, node.u1, node.v0, node.v1, radius_, PATCH_GRID);
-    node.worldCenter = meshData.worldCenter;
-    node.mesh = std::make_unique<Mesh>(
-        *ctx_, transferCmd,
-        meshData.vertices.data(),
-        static_cast<uint32_t>(meshData.vertices.size() * sizeof(ChunkVertex)),
-        meshData.indices.data(),
-        static_cast<uint32_t>(meshData.indices.size()),
-        staging);
-}
-
 void CubesphereBody::update(const glm::dvec3& cameraPos,
                              double fovY, double screenHeight) {
-    VkCommandBuffer transferCmd = cmdPool_->beginOneShot();
-    std::vector<luna::core::Buffer> staging;
-
     uint32_t splitBudget = MAX_SPLITS_PER_FRAME;
     activeNodes_ = 0;
 
     for (auto& root : roots_) {
-        updateNode(*root, cameraPos, fovY, screenHeight, splitBudget,
-                   transferCmd, staging);
-    }
-
-    if (!staging.empty()) {
-        // Submit all copies in one batch and block until complete.
-        // 1 wait per frame instead of 2 per mesh — still the core perf win.
-        cmdPool_->endOneShot(transferCmd, ctx_->graphicsQueue());
-    } else {
-        vkEndCommandBuffer(transferCmd);
-        vkFreeCommandBuffers(ctx_->device(), cmdPool_->pool(), 1, &transferCmd);
+        updateNode(*root, cameraPos, fovY, screenHeight, splitBudget);
     }
 }
 
 void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
                                  double fovY, double screenHeight,
-                                 uint32_t& splitBudget,
-                                 VkCommandBuffer transferCmd,
-                                 std::vector<luna::core::Buffer>& staging) {
+                                 uint32_t& splitBudget) {
     double distance = glm::length(node.worldCenter - cameraPos);
     // Avoid division by zero for camera inside the node's bounding sphere
     distance = glm::max(distance, node.boundingRadius * 0.1);
@@ -155,7 +117,7 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
             initNode(*node.children[3], node.faceIndex, uMid, node.u1, vMid, node.v1, node.depth + 1);
 
             for (auto& child : node.children) {
-                generateMeshBatched(*child, transferCmd, staging);
+                generateMesh(*child);
             }
             splitBudget -= 4;
 
@@ -164,8 +126,7 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
 
             // Recurse into children
             for (auto& child : node.children) {
-                updateNode(*child, cameraPos, fovY, screenHeight, splitBudget,
-                           transferCmd, staging);
+                updateNode(*child, cameraPos, fovY, screenHeight, splitBudget);
             }
         } else {
             activeNodes_++;
@@ -191,7 +152,7 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
         if (allChildrenLeaves && maxChildError < MERGE_THRESHOLD) {
             // Merge: regenerate parent mesh, destroy children
             if (!node.hasMesh()) {
-                generateMeshBatched(node, transferCmd, staging);
+                generateMesh(node);
             }
             for (auto& child : node.children) {
                 child.reset();
@@ -200,8 +161,7 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
         } else {
             // Recurse into children
             for (auto& child : node.children) {
-                if (child) updateNode(*child, cameraPos, fovY, screenHeight, splitBudget,
-                                      transferCmd, staging);
+                if (child) updateNode(*child, cameraPos, fovY, screenHeight, splitBudget);
             }
         }
     }
