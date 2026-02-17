@@ -30,7 +30,6 @@ public:
                                   double radius,
                                   uint32_t gridSize = 33);
 
-private:
     // Map (face, u, v) to a unit sphere direction vector
     static glm::dvec3 facePointToSphere(int face, double u, double v);
 };

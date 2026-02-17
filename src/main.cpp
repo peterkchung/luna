@@ -69,7 +69,7 @@ int main() {
         .setPushConstantSize(sizeof(TerrainPushConstants))
         .build();
 
-    // Build spherical Moon (cubesphere with fixed LOD depth 4)
+    // Build spherical Moon (cubesphere with dynamic quadtree LOD)
     luna::scene::CubesphereBody moon(ctx, commandPool, luna::util::LUNAR_RADIUS);
 
     // Sun direction (hardcoded: from upper-right in world space)
@@ -153,6 +153,10 @@ int main() {
         glm::dmat4 viewRot = camera.getRotationOnlyViewMatrix();
         glm::dmat4 proj = camera.getProjectionMatrix();
         glm::mat4 vp = glm::mat4(proj * viewRot);
+
+        // Update LOD before drawing
+        moon.update(camera.position(), camera.fovY(),
+                    static_cast<double>(swapchain.extent().height));
 
         // Draw Moon (cubesphere handles per-chunk push constants internally)
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, terrainPipeline.handle());
