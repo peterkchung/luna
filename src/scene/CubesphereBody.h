@@ -53,7 +53,7 @@ private:
     static constexpr uint32_t PATCH_GRID      = 33;
     static constexpr double   SPLIT_THRESHOLD = 2.0;
     static constexpr double   MERGE_THRESHOLD = 1.0;
-    static constexpr uint32_t MAX_SPLITS_PER_FRAME = 8;
+    static constexpr uint32_t MAX_SPLITS_PER_FRAME = 64;
 
     void initNode(QuadtreeNode& node, int face,
                   double u0, double u1, double v0, double v1, uint32_t depth);

@@ -61,10 +61,11 @@ int main() {
     luna::camera::Camera camera;
     luna::camera::CameraController cameraController;
 
-    // Initial camera position: 100km above surface at 0°N 0°E, looking toward Moon center
+    // Initial camera position: 100km above surface on -Y axis, looking toward horizon
     double startAlt = luna::util::LUNAR_RADIUS + 100'000.0;
-    camera.setPosition(glm::dvec3(startAlt, 0.0, 0.0));
-    camera.setRotation(glm::radians(-15.0), glm::radians(90.0));
+    camera.setPosition(glm::dvec3(0.0, -startAlt, 0.0));
+    // Pitch toward the Moon (+Y direction) to see the horizon
+    camera.setRotation(glm::radians(10.0), 0.0);
 
     // Terrain pipeline
     auto terrainPipeline = Pipeline::Builder(ctx, renderPass.handle())
@@ -102,8 +103,8 @@ int main() {
     // Start in 100km circular orbit (velocity perpendicular to radial direction)
     double orbitR = luna::util::LUNAR_RADIUS + 100'000.0;
     double orbitV = std::sqrt(luna::util::LUNAR_GM / orbitR);
-    simState.position = glm::dvec3(orbitR, 0.0, 0.0);
-    simState.velocity = glm::dvec3(0.0, 0.0, orbitV);
+    simState.position = glm::dvec3(0.0, -orbitR, 0.0);
+    simState.velocity = glm::dvec3(orbitV, 0.0, 0.0);
 
     luna::sim::Physics physics;
     physics.setTerrainQuery(luna::sim::sampleTerrainHeight);

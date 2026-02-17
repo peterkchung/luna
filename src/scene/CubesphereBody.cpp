@@ -44,10 +44,22 @@ void CubesphereBody::initNode(QuadtreeNode& node, int face,
     double vMid = (v0 + v1) * 0.5;
     node.worldCenter = ChunkGenerator::facePointToSphere(face, uMid, vMid) * radius_;
 
-    // Conservative bounding radius: half the arc length of the patch diagonal
-    glm::dvec3 corner0 = ChunkGenerator::facePointToSphere(face, u0, v0) * radius_;
-    glm::dvec3 corner1 = ChunkGenerator::facePointToSphere(face, u1, v1) * radius_;
-    node.boundingRadius = glm::length(corner1 - corner0) * 0.55;
+    // Conservative bounding radius: max distance from center to any corner/edge midpoint
+    glm::dvec3 testPoints[] = {
+        ChunkGenerator::facePointToSphere(face, u0, v0) * radius_,
+        ChunkGenerator::facePointToSphere(face, u1, v0) * radius_,
+        ChunkGenerator::facePointToSphere(face, u0, v1) * radius_,
+        ChunkGenerator::facePointToSphere(face, u1, v1) * radius_,
+        ChunkGenerator::facePointToSphere(face, uMid, v0) * radius_,
+        ChunkGenerator::facePointToSphere(face, uMid, v1) * radius_,
+        ChunkGenerator::facePointToSphere(face, u0, vMid) * radius_,
+        ChunkGenerator::facePointToSphere(face, u1, vMid) * radius_,
+    };
+    node.boundingRadius = 0.0;
+    for (const auto& p : testPoints) {
+        node.boundingRadius = glm::max(node.boundingRadius, glm::length(p - node.worldCenter));
+    }
+    node.boundingRadius *= 1.05; // 5% margin for heightmap displacement
 }
 
 void CubesphereBody::generateMesh(QuadtreeNode& node) {

@@ -92,7 +92,7 @@ ChunkMeshData ChunkGenerator::generate(int faceIndex,
 
     // Generate triangle-list indices from grid
     uint32_t quads = gridSize - 1;
-    data.indices.reserve(quads * quads * 6);
+    data.indices.reserve(quads * quads * 6 + 4 * quads * 6);
 
     for (uint32_t j = 0; j < quads; j++) {
         for (uint32_t i = 0; i < quads; i++) {
@@ -110,6 +110,53 @@ ChunkMeshData ChunkGenerator::generate(int faceIndex,
             data.indices.push_back(br);
         }
     }
+
+    // Skirt geometry — fills T-junction gaps between patches at different LOD levels.
+    // Each edge gets a strip of triangles hanging inward toward the Moon center.
+    double skirtDepth = (u1 - u0) * radius / static_cast<double>(gridSize - 1);
+
+    auto addSkirt = [&](uint32_t startIdx, uint32_t stride, uint32_t count, bool flip) {
+        uint32_t skirtBase = static_cast<uint32_t>(data.vertices.size());
+        for (uint32_t k = 0; k < count; k++) {
+            uint32_t edgeIdx = startIdx + k * stride;
+            ChunkVertex sv = data.vertices[edgeIdx];
+            glm::dvec3 worldPos = glm::dvec3(sv.position) + data.worldCenter;
+            glm::dvec3 dir = glm::normalize(worldPos);
+            worldPos -= dir * skirtDepth;
+            sv.position = glm::vec3(worldPos - data.worldCenter);
+            data.vertices.push_back(sv);
+        }
+        for (uint32_t k = 0; k < count - 1; k++) {
+            uint32_t e0 = startIdx + k * stride;
+            uint32_t e1 = startIdx + (k + 1) * stride;
+            uint32_t s0 = skirtBase + k;
+            uint32_t s1 = skirtBase + k + 1;
+            if (flip) {
+                data.indices.push_back(e0);
+                data.indices.push_back(e1);
+                data.indices.push_back(s0);
+                data.indices.push_back(s0);
+                data.indices.push_back(e1);
+                data.indices.push_back(s1);
+            } else {
+                data.indices.push_back(e0);
+                data.indices.push_back(s0);
+                data.indices.push_back(e1);
+                data.indices.push_back(e1);
+                data.indices.push_back(s0);
+                data.indices.push_back(s1);
+            }
+        }
+    };
+
+    // Bottom edge (j=0): skirt faces away from patch interior (downward in v)
+    addSkirt(0, 1, gridSize, false);
+    // Top edge (j=gridSize-1): skirt faces away from interior (upward in v)
+    addSkirt((gridSize - 1) * gridSize, 1, gridSize, true);
+    // Left edge (i=0): skirt faces left
+    addSkirt(0, gridSize, gridSize, true);
+    // Right edge (i=gridSize-1): skirt faces right
+    addSkirt(gridSize - 1, gridSize, gridSize, false);
 
     return data;
 }

@@ -16,7 +16,7 @@ public:
 
 private:
     double baseSpeed_ = 100.0;   // m/s
-    double sensitivity_ = 0.002; // radians/pixel
+    double sensitivity_ = 0.001; // radians/pixel
 };
 
 } // namespace luna::camera
