@@ -1,4 +1,4 @@
-// About: Free-look camera controller with WASD movement and mouse look.
+// About: Camera controller with radial-up mouse look and altitude-scaled movement.
 
 #pragma once
 

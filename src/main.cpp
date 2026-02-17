@@ -12,6 +12,7 @@
 #include "camera/CameraController.h"
 #include "scene/CubesphereBody.h"
 #include "scene/ChunkGenerator.h"
+#include "scene/Starfield.h"
 #include "sim/SimState.h"
 #include "sim/Physics.h"
 #include "sim/TerrainQuery.h"
@@ -38,6 +39,10 @@ struct TerrainPushConstants {
     glm::vec3 cameraOffset;   // (chunkCenter - cameraPos), computed in doubles on CPU
     float     _pad0;
     glm::vec4 sunDirection;
+};
+
+struct StarfieldPushConstants {
+    glm::mat4 viewProj;
 };
 
 int main() {
@@ -72,6 +77,22 @@ int main() {
         .enableDepthTest()
         .setPushConstantSize(sizeof(TerrainPushConstants))
         .build();
+
+    // Starfield pipeline (points, depth test on but no depth write, alpha blending)
+    auto starfieldPipeline = Pipeline::Builder(ctx, renderPass.handle())
+        .setShaders("shaders/starfield.vert.spv", "shaders/starfield.frag.spv")
+        .setVertexBinding(sizeof(luna::scene::StarVertex), {
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(luna::scene::StarVertex, direction))},
+            {1, 0, VK_FORMAT_R32_SFLOAT,       static_cast<uint32_t>(offsetof(luna::scene::StarVertex, brightness))},
+        })
+        .setTopology(VK_PRIMITIVE_TOPOLOGY_POINT_LIST)
+        .enableDepthTest()
+        .setDepthWrite(false)
+        .enableAlphaBlending()
+        .setPushConstantSize(sizeof(StarfieldPushConstants))
+        .build();
+
+    luna::scene::Starfield starfield(ctx, commandPool);
 
     // Build spherical Moon (cubesphere with dynamic quadtree LOD)
     luna::scene::CubesphereBody moon(ctx, commandPool, luna::util::LUNAR_RADIUS);
@@ -198,6 +219,10 @@ int main() {
         glm::dmat4 viewRot = camera.getRotationOnlyViewMatrix();
         glm::dmat4 proj = camera.getProjectionMatrix();
         glm::mat4 vp = glm::mat4(proj * viewRot);
+
+        // Draw starfield first (behind everything, no depth write)
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, starfieldPipeline.handle());
+        starfield.draw(cmd, starfieldPipeline.layout(), vp);
 
         // Update LOD before drawing
         moon.update(camera.position(), camera.fovY(),

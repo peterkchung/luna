@@ -82,7 +82,8 @@ add_library(luna_scene STATIC
     src/scene/Mesh.cpp
     src/scene/Terrain.cpp
     src/scene/ChunkGenerator.cpp
-    src/scene/CubesphereBody.cpp)
+    src/scene/CubesphereBody.cpp
+    src/scene/Starfield.cpp)
 target_include_directories(luna_scene PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(luna_scene PUBLIC luna_core luna_sim luna_util)
 

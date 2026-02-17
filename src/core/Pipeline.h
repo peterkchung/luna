@@ -31,6 +31,8 @@ public:
                                   std::vector<VkVertexInputAttributeDescription> attrs);
         Builder& setTopology(VkPrimitiveTopology topology);
         Builder& enableDepthTest(VkCompareOp compareOp = VK_COMPARE_OP_GREATER_OR_EQUAL);
+        Builder& setDepthWrite(bool enabled);
+        Builder& enableAlphaBlending();
         Builder& setPushConstantSize(uint32_t size);
 
         Pipeline build();
@@ -42,6 +44,8 @@ public:
         std::string          fragPath_;
         VkPrimitiveTopology  topology_ = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         bool                 depthTest_ = false;
+        bool                 depthWrite_ = true;
+        bool                 alphaBlend_ = false;
         VkCompareOp          depthCompareOp_ = VK_COMPARE_OP_GREATER_OR_EQUAL;
         uint32_t             pushConstantSize_ = 0;
         uint32_t             vertexStride_ = 0;

@@ -1,4 +1,4 @@
-// About: Perspective camera with double-precision view matrix and reversed-Z projection.
+// About: Perspective camera with quaternion orientation and reversed-Z projection.
 
 #pragma once
 
@@ -11,16 +11,25 @@ public:
     Camera();
 
     void setPosition(const glm::dvec3& pos) { position_ = pos; }
-    void setRotation(double pitch, double yaw) { pitch_ = pitch; yaw_ = yaw; }
+    void setOrientation(const glm::dquat& q) { orientation_ = glm::normalize(q); }
+
+    // Initialize orientation from Euler angles (for startup convenience)
+    void setRotation(double pitch, double yaw);
+
+    // Apply incremental rotation around given axes
+    void rotate(double pitchDelta, double yawDelta, const glm::dvec3& worldUp);
+
     void setAspect(double aspect) { aspect_ = aspect; }
 
     const glm::dvec3& position() const { return position_; }
-    double pitch() const { return pitch_; }
-    double yaw()   const { return yaw_; }
+    const glm::dquat& orientation() const { return orientation_; }
 
     glm::dvec3 forward() const;
     glm::dvec3 right()   const;
     glm::dvec3 up()      const;
+
+    // Local up direction (radial from Moon center for spherical bodies)
+    glm::dvec3 localUp() const;
 
     glm::dmat4 getViewMatrix() const;
     glm::dmat4 getProjectionMatrix() const;
@@ -35,13 +44,12 @@ public:
 
 private:
     glm::dvec3 position_ = glm::dvec3(0.0);
-    double pitch_ = 0.0; // radians, clamped to ±89°
-    double yaw_   = 0.0; // radians
+    glm::dquat orientation_{1.0, 0.0, 0.0, 0.0};
 
     double fovY_   = glm::radians(70.0);
     double aspect_ = 16.0 / 9.0;
-    double near_   = 0.1;
-    double far_    = 200'000.0;
+    double near_   = 0.5;
+    double far_    = 2'000'000.0;
 };
 
 } // namespace luna::camera
