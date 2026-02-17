@@ -10,8 +10,8 @@ namespace luna::scene {
 glm::dvec3 ChunkGenerator::facePointToSphere(int face, double u, double v) {
     glm::dvec3 p;
     switch (face) {
-        case 0: p = glm::dvec3( 1.0,   v,   u); break; // +X
-        case 1: p = glm::dvec3(-1.0,   v,  -u); break; // -X
+        case 0: p = glm::dvec3( 1.0,   u,   v); break; // +X
+        case 1: p = glm::dvec3(-1.0,  -u,   v); break; // -X
         case 2: p = glm::dvec3(   u, 1.0,  -v); break; // +Y
         case 3: p = glm::dvec3(   u,-1.0,   v); break; // -Y
         case 4: p = glm::dvec3(   u,   v, 1.0); break; // +Z
