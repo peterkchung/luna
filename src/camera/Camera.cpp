@@ -28,6 +28,10 @@ glm::dmat4 Camera::getViewMatrix() const {
     return glm::lookAt(position_, position_ + forward(), glm::dvec3(0.0, 1.0, 0.0));
 }
 
+glm::dmat4 Camera::getRotationOnlyViewMatrix() const {
+    return glm::lookAt(glm::dvec3(0.0), forward(), glm::dvec3(0.0, 1.0, 0.0));
+}
+
 glm::dmat4 Camera::getProjectionMatrix() const {
     // Reversed-Z: near maps to 1.0, far maps to 0.0
     // Build standard perspective then swap near/far planes

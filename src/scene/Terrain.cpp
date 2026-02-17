@@ -77,6 +77,9 @@ glm::dvec3 Terrain::latLonToCartesian(double lat, double lon, double radius) {
 Terrain::Terrain(const luna::core::VulkanContext& ctx, const luna::core::CommandPool& cmdPool,
                  double centerLat, double centerLon, double gridSize, uint32_t resolution)
 {
+    // Compute chunk center in world space (double precision)
+    center_ = latLonToCartesian(centerLat, centerLon, luna::util::LUNAR_RADIUS);
+
     // Convert grid size from meters to radians (approximate at lunar surface)
     double metersPerRadian = luna::util::LUNAR_RADIUS;
     double halfAngle = (gridSize / 2.0) / metersPerRadian;
@@ -87,7 +90,7 @@ Terrain::Terrain(const luna::core::VulkanContext& ctx, const luna::core::Command
     double startLat = centerLat - halfAngle;
     double startLon = centerLon - halfAngle;
 
-    // Generate vertices with positions and normals
+    // Generate vertices with chunk-local positions, normals, and height
     std::vector<TerrainVertex> vertices(resolution * resolution);
 
     for (uint32_t y = 0; y < resolution; y++) {
@@ -97,8 +100,9 @@ Terrain::Terrain(const luna::core::VulkanContext& ctx, const luna::core::Command
             double h = sampleHeight(lat, lon);
             double r = luna::util::LUNAR_RADIUS + h;
 
-            glm::dvec3 pos = latLonToCartesian(lat, lon, r);
-            vertices[y * resolution + x].position = glm::vec3(pos);
+            glm::dvec3 worldPos = latLonToCartesian(lat, lon, r);
+            vertices[y * resolution + x].position = glm::vec3(worldPos - center_);
+            vertices[y * resolution + x].height = static_cast<float>(h);
         }
     }
 

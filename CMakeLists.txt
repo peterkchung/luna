@@ -70,16 +70,24 @@ add_library(luna_camera STATIC
 target_include_directories(luna_camera PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(luna_camera PUBLIC luna_util)
 
+# --- Simulation library (no Vulkan dependency) ---
+add_library(luna_sim STATIC
+    src/sim/TerrainQuery.cpp)
+target_include_directories(luna_sim PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(luna_sim PUBLIC luna_util)
+
 # --- Scene library ---
 add_library(luna_scene STATIC
     src/scene/Mesh.cpp
-    src/scene/Terrain.cpp)
+    src/scene/Terrain.cpp
+    src/scene/ChunkGenerator.cpp
+    src/scene/CubesphereBody.cpp)
 target_include_directories(luna_scene PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(luna_scene PUBLIC luna_core luna_util)
+target_link_libraries(luna_scene PUBLIC luna_core luna_sim luna_util)
 
 # --- Executable ---
 add_executable(luna3d src/main.cpp)
 target_link_libraries(luna3d PRIVATE
-    luna_core luna_scene luna_input luna_camera luna_util
+    luna_core luna_scene luna_sim luna_input luna_camera luna_util
     Vulkan::Vulkan glfw)
 add_dependencies(luna3d shaders)

@@ -25,8 +25,13 @@ public:
     glm::dmat4 getViewMatrix() const;
     glm::dmat4 getProjectionMatrix() const;
 
+    // Rotation-only view matrix (no translation — for camera-relative rendering)
+    glm::dmat4 getRotationOnlyViewMatrix() const;
+
     // Compute VP in doubles, downcast to float for GPU push constants
     glm::mat4 getViewProjectionMatrix() const;
+
+    double fovY() const { return fovY_; }
 
 private:
     glm::dvec3 position_ = glm::dvec3(0.0);

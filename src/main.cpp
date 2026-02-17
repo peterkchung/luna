@@ -10,7 +10,8 @@
 #include "input/InputManager.h"
 #include "camera/Camera.h"
 #include "camera/CameraController.h"
-#include "scene/Terrain.h"
+#include "scene/CubesphereBody.h"
+#include "scene/ChunkGenerator.h"
 #include "util/Log.h"
 #include "util/Math.h"
 
@@ -29,7 +30,9 @@ static void framebufferResizeCallback(GLFWwindow* /*window*/, int /*w*/, int /*h
 }
 
 struct TerrainPushConstants {
-    glm::mat4 mvp;
+    glm::mat4 viewProj;       // rotation + projection, no translation
+    glm::vec3 cameraOffset;   // (chunkCenter - cameraPos), computed in doubles on CPU
+    float     _pad0;
     glm::vec4 sunDirection;
 };
 
@@ -49,26 +52,25 @@ int main() {
     luna::camera::Camera camera;
     luna::camera::CameraController cameraController;
 
-    // Initial camera position: ~100m above terrain at 0°N 0°E
-    // At equator (lat=0, lon=0): position is along +X axis
-    double startAlt = luna::util::LUNAR_RADIUS + 100.0;
+    // Initial camera position: 100km above surface at 0°N 0°E, looking toward Moon center
+    double startAlt = luna::util::LUNAR_RADIUS + 100'000.0;
     camera.setPosition(glm::dvec3(startAlt, 0.0, 0.0));
-    // Look along -X toward the surface, slightly tilted down
     camera.setRotation(glm::radians(-15.0), glm::radians(180.0));
 
     // Terrain pipeline
     auto terrainPipeline = Pipeline::Builder(ctx, renderPass.handle())
         .setShaders("shaders/terrain.vert.spv", "shaders/terrain.frag.spv")
-        .setVertexBinding(sizeof(luna::scene::TerrainVertex), {
-            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(luna::scene::TerrainVertex, position))},
-            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(luna::scene::TerrainVertex, normal))},
+        .setVertexBinding(sizeof(luna::scene::ChunkVertex), {
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(luna::scene::ChunkVertex, position))},
+            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(luna::scene::ChunkVertex, normal))},
+            {2, 0, VK_FORMAT_R32_SFLOAT,       static_cast<uint32_t>(offsetof(luna::scene::ChunkVertex, height))},
         })
         .enableDepthTest()
         .setPushConstantSize(sizeof(TerrainPushConstants))
         .build();
 
-    // Generate terrain at equator (0°N, 0°E)
-    luna::scene::Terrain terrain(ctx, commandPool);
+    // Build spherical Moon (cubesphere with fixed LOD depth 4)
+    luna::scene::CubesphereBody moon(ctx, commandPool, luna::util::LUNAR_RADIUS);
 
     // Sun direction (hardcoded: from upper-right in world space)
     glm::vec3 sunDir3 = glm::normalize(glm::vec3(0.5f, 0.8f, 0.3f));
@@ -147,17 +149,14 @@ int main() {
         scissor.extent = swapchain.extent();
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        // Draw terrain
+        // Camera-relative rendering: rotation-only VP + per-chunk offset
+        glm::dmat4 viewRot = camera.getRotationOnlyViewMatrix();
+        glm::dmat4 proj = camera.getProjectionMatrix();
+        glm::mat4 vp = glm::mat4(proj * viewRot);
+
+        // Draw Moon (cubesphere handles per-chunk push constants internally)
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, terrainPipeline.handle());
-
-        TerrainPushConstants pc{};
-        pc.mvp = camera.getViewProjectionMatrix();
-        pc.sunDirection = sunDir;
-        vkCmdPushConstants(cmd, terrainPipeline.layout(),
-                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                           0, sizeof(TerrainPushConstants), &pc);
-
-        terrain.draw(cmd);
+        moon.draw(cmd, terrainPipeline.layout(), vp, camera.position(), sunDir);
 
         vkCmdEndRenderPass(cmd);
         vkEndCommandBuffer(cmd);

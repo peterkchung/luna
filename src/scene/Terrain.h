@@ -14,8 +14,9 @@ class CommandPool;
 namespace luna::scene {
 
 struct TerrainVertex {
-    glm::vec3 position;
+    glm::vec3 position;  // chunk-local (relative to center)
     glm::vec3 normal;
+    float     height;    // elevation above LUNAR_RADIUS in meters
 };
 
 class Terrain {
@@ -28,6 +29,8 @@ public:
 
     void draw(VkCommandBuffer cmd) const;
 
+    glm::dvec3 center() const { return center_; }
+
 private:
     // Procedural heightmap: elevation offset from lunar radius in meters
     static double sampleHeight(double lat, double lon);
@@ -36,6 +39,7 @@ private:
     static glm::dvec3 latLonToCartesian(double lat, double lon, double radius);
 
     Mesh mesh_;
+    glm::dvec3 center_;
 };
 
 } // namespace luna::scene
