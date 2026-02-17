@@ -19,93 +19,56 @@ Development phases for building a realistic lunar landing simulator. Each phase 
 - Directional sun lighting with height-based coloring
 - 256x256 vertex grid, ~10km coverage
 
-### Camera System
+### Camera System (Initial)
 - Double-precision perspective camera with reversed-Z projection
 - Free-look controller (WASD + mouse, scroll-wheel speed)
-- Near=0.1m, far=200km depth range
 
----
+### Phase A — Camera-Relative Rendering
+- [x] Add rotation-only view matrix to Camera (no translation baked in)
+- [x] Update push constants: `mat4 viewProj` + `vec3 cameraOffset` + `vec4 sunDirection`
+- [x] Update vertex shader to compute `viewPos = inPosition + cameraOffset`
+- [x] Add `float height` vertex attribute for elevation-based coloring
+- [x] Update fragment shader to use height attribute instead of `length(fragPosition)`
 
-## Phase A — Camera-Relative Rendering
+### Phase B — Cubesphere (Spherical Moon)
+- [x] Extract heightmap sampling into `sim/TerrainQuery` (pure math, no Vulkan)
+- [x] Implement cube-face-to-sphere projection (6 faces)
+- [x] Implement `ChunkGenerator` — produces vertex/index data per patch
+- [x] Implement `CubesphereBody` — manages 6 faces, each subdivided into patches
+- [x] Store vertex positions relative to patch center (chunk-local coordinates)
+- [x] Apply procedural heightmap displacement on the sphere surface
+- [x] Replace flat `Terrain` with `CubesphereBody` in main loop
+- [x] Start camera at 100km altitude
 
-**Goal:** Eliminate floating-point precision loss at Moon-scale coordinates.
+### Phase C — Quadtree LOD
+- [x] Implement quadtree node with split/merge state machine
+- [x] Screen-space geometric error metric for LOD selection
+- [x] Skirt geometry to fill T-junction gaps between LOD levels
+- [x] Frustum culling (Gribb/Hartmann plane extraction, bounding sphere test)
+- [x] Conservative bounding radius from corner/edge midpoint sampling
+- [x] Mesh upload budget (max 64 splits per frame for fast convergence)
 
-- [ ] Add rotation-only view matrix to Camera (no translation baked in)
-- [ ] Update push constants: `mat4 viewProj` + `vec3 cameraOffset` + `vec4 sunDirection`
-- [ ] Update vertex shader to compute `viewPos = inPosition + cameraOffset`
-- [ ] Add `float height` vertex attribute for elevation-based coloring
-- [ ] Update fragment shader to use height attribute instead of `length(fragPosition)`
+### Phase D — Physics Simulation
+- [x] Implement `SimState` — position, velocity, orientation, fuel, flight phase
+- [x] Implement `Physics` — semi-implicit Euler integration
+- [x] Lunar gravity: `a = -GM/r^2 * normalize(position)` (GM = 4.9028695e12)
+- [x] Thrust: body-frame +Y, transformed by orientation quaternion
+- [x] Fuel consumption based on specific impulse
+- [x] Terrain collision via `TerrainQuery` heightmap lookup
+- [x] Landing/crash detection (vertical speed < 2 m/s, surface speed < 1 m/s)
+- [x] Input mapping: throttle (Z/X), rotation torque (IJKL/UO)
+- [x] Start in 100km circular orbit (v = ~1633 m/s prograde)
 
-**Milestone:** Fly camera far from terrain with no visible jitter.
-
----
-
-## Phase B — Cubesphere (Spherical Moon)
-
-**Goal:** Replace the flat terrain patch with a full sphere visible from orbit.
-
-- [ ] Extract heightmap sampling into `sim/TerrainQuery` (pure math, no Vulkan)
-- [ ] Implement cube-face-to-sphere projection (6 faces)
-- [ ] Implement `ChunkGenerator` — produces vertex/index data per patch
-- [ ] Implement `CubesphereBody` — manages 6 faces, each subdivided into patches
-- [ ] Store vertex positions relative to patch center (chunk-local coordinates)
-- [ ] Apply procedural heightmap displacement on the sphere surface
-- [ ] Replace flat `Terrain` with `CubesphereBody` in main loop
-- [ ] Start camera at 100km altitude
-
-**Milestone:** Full Moon sphere visible from orbit, heightmap detail visible.
-
----
-
-## Phase C — Quadtree LOD
-
-**Goal:** Smooth detail transition from orbit to surface.
-
-- [ ] Implement `QuadtreeNode` with split/merge state machine
-- [ ] Screen-space geometric error metric for LOD selection
-- [ ] Edge stitching to prevent T-junction cracks (index buffer modification)
-- [ ] Enforce max 1-level LOD difference between neighbors
-- [ ] Frustum culling (test node bounding sphere against view frustum)
-- [ ] Mesh upload budget (max 2–3 new meshes per frame to avoid stalls)
-
-**Milestone:** Fly from 100km orbit to surface with smooth, crack-free LOD transitions.
-
-**Constants:** `PATCH_GRID=33`, `MAX_DEPTH=15` (~2.6m vertex spacing at deepest), `MAX_ACTIVE_PATCHES=500`.
-
----
-
-## Phase D — Physics Simulation
-
-**Goal:** Orbital motion, gravity, thrust, and collision.
-
-- [ ] Implement `SimState` — position, velocity, orientation, fuel, flight phase
-- [ ] Implement `Physics` — semi-implicit Euler integration
-- [ ] Lunar gravity: `a = -GM/r^2 * normalize(position)` (GM = 4.9028695e12)
-- [ ] Thrust: body-frame +Y, transformed by orientation quaternion
-- [ ] Fuel consumption based on specific impulse
-- [ ] Terrain collision via `TerrainQuery` heightmap lookup
-- [ ] Landing/crash detection (vertical speed < 2 m/s, surface speed < 1 m/s)
-- [ ] Input mapping: throttle, rotation commands
-- [ ] Start in 100km circular orbit (v = ~1633 m/s prograde)
-
-**Milestone:** Lander orbits under gravity, thrust changes trajectory, can land or crash.
-
----
-
-## Phase E — Camera Overhaul + Starfield
-
-**Goal:** Proper orientation on a sphere and spatial context.
-
-- [ ] Refactor Camera to quaternion-based orientation (no Euler gimbal lock)
-- [ ] Radial "up" vector: `normalize(position)` instead of fixed `(0,1,0)`
-- [ ] Camera modes: free-fly and attached-to-lander
-- [ ] Altitude-based movement speed scaling
-- [ ] Extend far plane to 2,000,000m (visible Moon limb from orbit)
-- [ ] Implement `Starfield` — ~5,000 procedural stars as point sprites
-- [ ] Starfield shaders with `gl_PointSize` and brightness variation
-- [ ] Pipeline builder additions: `setDepthWrite(bool)`, `enablePointSize()`
-
-**Milestone:** Stars visible in background, up stays radial to surface, camera tracks lander.
+### Phase E — Camera Overhaul + Starfield
+- [x] Refactor Camera to quaternion-based orientation (no Euler gimbal lock)
+- [x] Radial "up" vector: `normalize(position)` instead of fixed `(0,1,0)`
+- [x] Camera modes: free-fly and attached-to-lander (P to toggle)
+- [x] Altitude-based movement speed scaling
+- [x] Extend far plane to 2,000,000m (visible Moon limb from orbit)
+- [x] Implement `Starfield` — ~5,000 procedural stars as point sprites
+- [x] Starfield shaders with `gl_PointSize` and brightness variation
+- [x] Pipeline builder additions: `setDepthWrite(bool)`, `enableAlphaBlending()`
+- [x] Camera starts on -Y axis for natural Vulkan Y-down orientation
 
 ---
 

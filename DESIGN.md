@@ -15,6 +15,7 @@ luna/
 ├── README.md *
 ├── DESIGN.md *
 ├── ROADMAP.md *
+├── CHANGELOG.md *
 │
 ├── assets/
 │   ├── terrain/                # NASA LOLA heightmaps (future)
@@ -26,15 +27,15 @@ luna/
 ├── shaders/
 │   ├── terrain.vert *          # Terrain mesh vertex shader (camera-relative)
 │   ├── terrain.frag *          # Terrain mesh fragment shader
-│   ├── starfield.vert          # Star point-sprite vertex shader
-│   ├── starfield.frag          # Star point-sprite fragment shader
-│   ├── cockpit.vert            # Cockpit frame geometry
+│   ├── starfield.vert *        # Star point-sprite vertex shader
+│   ├── starfield.frag *        # Star point-sprite fragment shader
+│   ├── cockpit.vert            # Cockpit frame geometry (future)
 │   ├── cockpit.frag
-│   ├── particle.vert           # Engine exhaust particles
+│   ├── particle.vert           # Engine exhaust particles (future)
 │   ├── particle.frag
-│   ├── hud.vert                # Screen-space telemetry overlay
+│   ├── hud.vert                # Screen-space telemetry overlay (future)
 │   ├── hud.frag
-│   └── trajectory.vert/.frag   # Predicted flight path overlay
+│   └── trajectory.vert/.frag   # Predicted flight path overlay (future)
 │
 ├── src/
 │   ├── main.cpp *              # Entry point, app lifecycle
@@ -50,32 +51,30 @@ luna/
 │   │   ├── Image.h/cpp              # Image/texture creation + views
 │   │   └── Sync.h/cpp               # Fences, semaphores, frame sync
 │   │
-│   ├── scene/                  # Scene objects and management
+│   ├── scene/ *                # Scene objects and management
 │   │   ├── Mesh.h/cpp *             # Vertex/index buffer pair + draw
-│   │   ├── CubesphereBody.h/cpp     # Spherical Moon: 6-face quadtree LOD
-│   │   ├── ChunkGenerator.h/cpp     # Generates vertex/index data per patch
-│   │   ├── QuadtreeNode.h           # Quadtree node for LOD management
-│   │   ├── Starfield.h/cpp          # Procedural star point cloud
-│   │   ├── Terrain.h/cpp *          # Legacy flat patch (to be replaced)
+│   │   ├── CubesphereBody.h/cpp *   # Spherical Moon: 6-face quadtree LOD
+│   │   ├── ChunkGenerator.h/cpp *   # Generates vertex/index data per patch
+│   │   ├── Starfield.h/cpp *        # Procedural star point cloud
 │   │   ├── CelestialSphere.h/cpp    # Stars, planets, sun, earth (future)
 │   │   ├── ParticleSystem.h/cpp     # Exhaust particles (future)
 │   │   └── Cockpit.h/cpp            # Static cockpit frame geometry (future)
 │   │
-│   ├── sim/                    # Simulation (no Vulkan dependencies)
-│   │   ├── SimState.h               # Central simulation state
-│   │   ├── Physics.h/cpp            # 6DOF rigid body, gravity, thrust
-│   │   ├── TerrainQuery.h/cpp       # Heightmap sampling (pure math)
+│   ├── sim/ *                  # Simulation (no Vulkan dependencies)
+│   │   ├── SimState.h *             # Central simulation state
+│   │   ├── Physics.h/cpp *          # 6DOF rigid body, gravity, thrust
+│   │   ├── TerrainQuery.h/cpp *     # Heightmap sampling (pure math)
 │   │   ├── OrbitalMechanics.h/cpp   # Keplerian orbits (future)
 │   │   ├── Ephemeris.h/cpp          # SPICE wrapper (future)
 │   │   └── TimeManager.h/cpp        # Mission elapsed time (future)
 │   │
 │   ├── input/ *                # Input handling
 │   │   ├── InputManager.h/cpp *     # GLFW key/mouse polling
-│   │   └── FlightControls.h/cpp     # Maps inputs to sim commands
+│   │   └── FlightControls.h/cpp     # Maps inputs to sim commands (future)
 │   │
 │   ├── camera/ *               # Camera system
-│   │   ├── Camera.h/cpp *           # Double-precision perspective camera
-│   │   └── CameraController.h/cpp * # Modes: free-look (+ attached-to-lander)
+│   │   ├── Camera.h/cpp *           # Quaternion camera, reversed-Z projection
+│   │   └── CameraController.h/cpp * # Radial-up mouse look, altitude-scaled speed
 │   │
 │   ├── hud/                    # Heads-up display (future)
 │   │   ├── HudRenderer.h/cpp
@@ -99,7 +98,7 @@ luna/
 ```
 luna_sim    → luna_util              (no Vulkan — testable without GPU)
 luna_core   → luna_util, Vulkan, GLFW
-luna_scene  → luna_core, luna_util
+luna_scene  → luna_core, luna_sim, luna_util
 luna_camera → luna_util
 luna_input  → luna_util, GLFW
 main        → everything
@@ -147,7 +146,7 @@ The cubesphere pipeline:
 4. Procedural heightmap displacement is applied (later: NASA LOLA data)
 5. Vertex positions are stored **relative to the patch center** (preserves float precision)
 6. LOD selection: nodes split/merge based on screen-space geometric error
-7. Edge stitching prevents T-junction cracks between LOD levels
+7. Skirt geometry fills T-junction gaps between LOD levels
 
 **ChunkGenerator** produces vertex/index data for a single quadtree patch:
 - Projects cube-face UV grid onto sphere surface
@@ -204,9 +203,11 @@ Why double precision? At orbital altitude (~100km), Moon-centered coordinates ar
 - `getRotationOnlyViewMatrix()` — rotation without translation (for camera-relative rendering)
 - `getProjectionMatrix()` — reversed-Z, near=0.5m, far=2,000,000m
 
+The camera starts on the **-Y axis** at 100km altitude. This is deliberate: Vulkan's clip space has +Y pointing downward on screen. By positioning the camera on -Y, its default up (+Y) points toward the Moon center, which Vulkan renders at the screen bottom. Moon below, stars above — no viewport flip or roll correction needed.
+
 **CameraController** modes:
 1. **Free-fly** — WASD + mouse look with radial up vector. Speed scales with altitude.
-2. **Attached** — locked to lander position/orientation from SimState.
+2. **Attached** — locked to lander position/orientation from SimState (toggle with P key).
 
 ---
 
@@ -253,6 +254,7 @@ Vertex positions in each chunk are relative to the chunk center (~50m max magnit
 - **World origin:** Moon center
 - **World units:** meters
 - **World axes:** +X toward 0°N 0°E, +Y toward north pole, +Z toward 0°N 90°E (IAU_MOON frame)
+- **Camera start:** -Y axis (100km above surface), default up (+Y) naturally aligns with Vulkan's Y-down
 - **Lander local:** +X right, +Y up (thrust direction), +Z forward (out the window)
 - **Chunk local:** positions relative to chunk center on the sphere surface
 
@@ -278,9 +280,9 @@ A cubesphere starts with 6 faces of a unit cube. Each vertex on a face is normal
 
 ```
 Cube face projection (6 faces):
-+X: (1, v, u)    -X: (-1, v, -u)
-+Y: (u, 1, -v)   -Y: (u, -1, v)
-+Z: (u, v, 1)    -Z: (-u, v, -1)
++X: (1, u, v)     -X: (-1, -u, v)
++Y: (u, 1, -v)    -Y: (u, -1, v)
++Z: (u, v, 1)     -Z: (-u, v, -1)
 
 where u, v range from -1 to +1 across the face.
 ```
@@ -308,9 +310,9 @@ Merge when all children < 1.0 pixels
 
 In practice, only ~50–200 patches are active at any time (deep only near camera). At 33x33 vertices (2,048 triangles per patch), 200 patches = ~410k triangles.
 
-### Edge Stitching
+### Skirt Geometry
 
-Adjacent patches differing by one LOD level are stitched via index buffer modification. The finer patch skips every other vertex along the shared edge, creating fan triangles that match the coarser neighbor. Max LOD difference of 1 is enforced between neighbors.
+Each patch has a "skirt" — a strip of triangles hanging inward (toward the Moon center) from every edge. This fills T-junction gaps that occur when adjacent patches are at different LOD levels. The skirt depth is proportional to the patch's geometric error (one grid cell's arc length), ensuring gaps are always covered regardless of the LOD difference between neighbors.
 
 ### Chunk Vertex Format
 
