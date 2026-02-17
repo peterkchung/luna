@@ -72,7 +72,7 @@ int main() {
         .setShaders("shaders/terrain.vert.spv", "shaders/terrain.frag.spv")
         .setVertexBinding(sizeof(luna::scene::ChunkVertex), {
             {0, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(luna::scene::ChunkVertex, position))},
-            {1, 0, VK_FORMAT_R16G16_SINT,      static_cast<uint32_t>(offsetof(luna::scene::ChunkVertex, normalX))},
+            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(luna::scene::ChunkVertex, normal))},
             {2, 0, VK_FORMAT_R32_SFLOAT,       static_cast<uint32_t>(offsetof(luna::scene::ChunkVertex, height))},
         })
         .enableDepthTest()

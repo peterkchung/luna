@@ -9,11 +9,10 @@
 namespace luna::scene {
 
 struct ChunkVertex {
-    glm::vec3 position;   // 12 bytes — relative to chunk center
-    int16_t   normalX;    //  2 bytes — octahedron-encoded normal
-    int16_t   normalY;    //  2 bytes
-    float     height;     //  4 bytes — elevation above LUNAR_RADIUS in meters
-};                        // 20 bytes total
+    glm::vec3 position;   // relative to chunk center
+    glm::vec3 normal;
+    float     height;     // elevation above LUNAR_RADIUS in meters
+};
 
 struct ChunkMeshData {
     std::vector<ChunkVertex> vertices;
