@@ -2,9 +2,29 @@
 
 #include "scene/ChunkGenerator.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace luna::scene {
+
+namespace {
+
+// Encode a unit normal to octahedron snorm16x2
+void octEncode(const glm::vec3& n, int16_t& outX, int16_t& outY) {
+    float absSum = std::abs(n.x) + std::abs(n.y) + std::abs(n.z);
+    float ox = n.x / absSum;
+    float oy = n.y / absSum;
+    if (n.z < 0.0f) {
+        float tmpX = (1.0f - std::abs(oy)) * (ox >= 0.0f ? 1.0f : -1.0f);
+        float tmpY = (1.0f - std::abs(ox)) * (oy >= 0.0f ? 1.0f : -1.0f);
+        ox = tmpX;
+        oy = tmpY;
+    }
+    outX = static_cast<int16_t>(std::clamp(ox * 32767.0f, -32767.0f, 32767.0f));
+    outY = static_cast<int16_t>(std::clamp(oy * 32767.0f, -32767.0f, 32767.0f));
+}
+
+} // anonymous namespace
 
 glm::dvec3 ChunkGenerator::facePointToSphere(int face, double u, double v) {
     glm::dvec3 p;
@@ -48,7 +68,7 @@ ChunkMeshData ChunkGenerator::generate(int faceIndex,
 
             uint32_t idx = j * gridSize + i;
             data.vertices[idx].position = glm::vec3(worldPos - data.worldCenter);
-            data.vertices[idx].normal   = glm::vec3(dir);
+            octEncode(glm::vec3(dir), data.vertices[idx].normalX, data.vertices[idx].normalY);
             data.vertices[idx].height   = 0.0f;
         }
     }
