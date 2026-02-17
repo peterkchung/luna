@@ -16,8 +16,6 @@ if(NOT GLSLANG_VALIDATOR)
     message(FATAL_ERROR "glslangValidator not found — install the Vulkan SDK")
 endif()
 
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/shaders)
-
 file(GLOB SHADER_SOURCES
     ${CMAKE_SOURCE_DIR}/shaders/*.vert
     ${CMAKE_SOURCE_DIR}/shaders/*.frag)
@@ -25,7 +23,7 @@ file(GLOB SHADER_SOURCES
 set(SHADER_SPIRV_FILES "")
 foreach(SHADER ${SHADER_SOURCES})
     get_filename_component(SHADER_NAME ${SHADER} NAME)
-    set(SPIRV_OUTPUT ${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}.spv)
+    set(SPIRV_OUTPUT ${CMAKE_SOURCE_DIR}/shaders/${SHADER_NAME}.spv)
     add_custom_command(
         OUTPUT ${SPIRV_OUTPUT}
         COMMAND ${GLSLANG_VALIDATOR} -V ${SHADER} -o ${SPIRV_OUTPUT}

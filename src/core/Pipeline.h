@@ -30,6 +30,7 @@ public:
         Builder& setVertexBinding(uint32_t stride,
                                   std::vector<VkVertexInputAttributeDescription> attrs);
         Builder& setTopology(VkPrimitiveTopology topology);
+        Builder& setCullMode(VkCullModeFlags mode);
         Builder& enableDepthTest(VkCompareOp compareOp = VK_COMPARE_OP_GREATER_OR_EQUAL);
         Builder& setDepthWrite(bool enabled);
         Builder& enableAlphaBlending();
@@ -43,6 +44,7 @@ public:
         std::string          vertPath_;
         std::string          fragPath_;
         VkPrimitiveTopology  topology_ = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkCullModeFlags      cullMode_ = VK_CULL_MODE_BACK_BIT;
         bool                 depthTest_ = false;
         bool                 depthWrite_ = true;
         bool                 alphaBlend_ = false;

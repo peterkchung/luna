@@ -58,6 +58,11 @@ Pipeline::Builder& Pipeline::Builder::setTopology(VkPrimitiveTopology topology) 
     return *this;
 }
 
+Pipeline::Builder& Pipeline::Builder::setCullMode(VkCullModeFlags mode) {
+    cullMode_ = mode;
+    return *this;
+}
+
 Pipeline::Builder& Pipeline::Builder::enableDepthTest(VkCompareOp compareOp) {
     depthTest_      = true;
     depthCompareOp_ = compareOp;
@@ -130,7 +135,7 @@ Pipeline Pipeline::Builder::build() {
     rasterizer.sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth   = 1.0f;
-    rasterizer.cullMode    = VK_CULL_MODE_BACK_BIT;
+    rasterizer.cullMode    = cullMode_;
     rasterizer.frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
     VkPipelineMultisampleStateCreateInfo multisampling{};

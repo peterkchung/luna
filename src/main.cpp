@@ -64,7 +64,7 @@ int main() {
     // Initial camera position: 100km above surface at 0°N 0°E, looking toward Moon center
     double startAlt = luna::util::LUNAR_RADIUS + 100'000.0;
     camera.setPosition(glm::dvec3(startAlt, 0.0, 0.0));
-    camera.setRotation(glm::radians(-15.0), glm::radians(180.0));
+    camera.setRotation(glm::radians(-15.0), glm::radians(90.0));
 
     // Terrain pipeline
     auto terrainPipeline = Pipeline::Builder(ctx, renderPass.handle())
