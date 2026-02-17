@@ -3,7 +3,6 @@
 #pragma once
 
 #include "scene/Mesh.h"
-#include "core/Buffer.h"
 #include "util/Math.h"
 #include <array>
 #include <memory>
@@ -69,9 +68,6 @@ private:
                   const glm::mat4& viewProj, const glm::dvec3& cameraPos,
                   const glm::vec4& sunDirection, const glm::vec4 frustumPlanes[6]) const;
 
-    // Release previous frame's staging buffers once their transfer is confirmed complete
-    void retirePendingTransfer();
-
     static void extractFrustumPlanes(const glm::mat4& vp, glm::vec4 planes[6]);
     static bool sphereInFrustum(const glm::vec4 planes[6],
                                 const glm::vec3& center, float radius);
@@ -81,11 +77,6 @@ private:
 
     const luna::core::VulkanContext* ctx_;
     const luna::core::CommandPool*   cmdPool_;
-
-    // Pending transfer from previous frame
-    VkFence                          transferFence_ = VK_NULL_HANDLE;
-    VkCommandBuffer                  transferCmd_   = VK_NULL_HANDLE;
-    std::vector<luna::core::Buffer>  pendingStaging_;
 
     uint32_t activeNodes_ = 0;
 };

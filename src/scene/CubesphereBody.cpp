@@ -97,23 +97,8 @@ void CubesphereBody::generateMeshBatched(QuadtreeNode& node,
         staging);
 }
 
-void CubesphereBody::retirePendingTransfer() {
-    if (transferFence_ == VK_NULL_HANDLE) return;
-
-    vkWaitForFences(ctx_->device(), 1, &transferFence_, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(ctx_->device(), transferFence_, nullptr);
-    vkFreeCommandBuffers(ctx_->device(), cmdPool_->pool(), 1, &transferCmd_);
-
-    transferFence_ = VK_NULL_HANDLE;
-    transferCmd_   = VK_NULL_HANDLE;
-    pendingStaging_.clear();
-}
-
 void CubesphereBody::update(const glm::dvec3& cameraPos,
                              double fovY, double screenHeight) {
-    // Wait for previous frame's transfers before releasing staging memory
-    retirePendingTransfer();
-
     VkCommandBuffer transferCmd = cmdPool_->beginOneShot();
     std::vector<luna::core::Buffer> staging;
 
@@ -126,21 +111,10 @@ void CubesphereBody::update(const glm::dvec3& cameraPos,
     }
 
     if (!staging.empty()) {
-        // Make transfer writes visible to subsequent vertex/index reads
-        VkMemoryBarrier barrier{};
-        barrier.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_INDEX_READ_BIT;
-        vkCmdPipelineBarrier(transferCmd,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-            0, 1, &barrier, 0, nullptr, 0, nullptr);
-
-        transferFence_ = cmdPool_->endOneShotWithFence(transferCmd, ctx_->graphicsQueue());
-        transferCmd_   = transferCmd;
-        pendingStaging_ = std::move(staging);
+        // Submit all copies in one batch and block until complete.
+        // 1 wait per frame instead of 2 per mesh — still the core perf win.
+        cmdPool_->endOneShot(transferCmd, ctx_->graphicsQueue());
     } else {
-        // No uploads this frame — discard the unused command buffer
         vkEndCommandBuffer(transferCmd);
         vkFreeCommandBuffers(ctx_->device(), cmdPool_->pool(), 1, &transferCmd);
     }
