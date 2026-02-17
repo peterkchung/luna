@@ -12,6 +12,9 @@
 #include "camera/CameraController.h"
 #include "scene/CubesphereBody.h"
 #include "scene/ChunkGenerator.h"
+#include "sim/SimState.h"
+#include "sim/Physics.h"
+#include "sim/TerrainQuery.h"
 #include "util/Log.h"
 #include "util/Math.h"
 
@@ -19,6 +22,7 @@
 #include <GLFW/glfw3.h>
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 
 using namespace luna::core;
@@ -72,6 +76,19 @@ int main() {
     // Build spherical Moon (cubesphere with dynamic quadtree LOD)
     luna::scene::CubesphereBody moon(ctx, commandPool, luna::util::LUNAR_RADIUS);
 
+    // Physics simulation
+    luna::sim::SimState simState;
+    // Start in 100km circular orbit (velocity perpendicular to radial direction)
+    double orbitR = luna::util::LUNAR_RADIUS + 100'000.0;
+    double orbitV = std::sqrt(luna::util::LUNAR_GM / orbitR);
+    simState.position = glm::dvec3(orbitR, 0.0, 0.0);
+    simState.velocity = glm::dvec3(0.0, 0.0, orbitV);
+
+    luna::sim::Physics physics;
+    physics.setTerrainQuery(luna::sim::sampleTerrainHeight);
+
+    bool attachedToLander = false;
+
     // Sun direction (hardcoded: from upper-right in world space)
     glm::vec3 sunDir3 = glm::normalize(glm::vec3(0.5f, 0.8f, 0.3f));
     glm::vec4 sunDir(sunDir3, 0.0f);
@@ -93,6 +110,34 @@ int main() {
         if (glfwGetMouseButton(ctx.window(), GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS &&
             !input.isCursorCaptured())
             input.setCursorCaptured(true);
+
+        // Toggle camera mode: P key
+        if (input.isKeyPressed(GLFW_KEY_P))
+            attachedToLander = !attachedToLander;
+
+        // Lander throttle: Z to increase, X to decrease
+        if (input.isKeyDown(GLFW_KEY_Z))
+            simState.throttle = glm::min(simState.throttle + 0.5 * dt, 1.0);
+        if (input.isKeyDown(GLFW_KEY_X))
+            simState.throttle = glm::max(simState.throttle - 0.5 * dt, 0.0);
+
+        // Lander rotation torque (body frame): IJKL for pitch/yaw, UO for roll
+        simState.torqueInput = glm::dvec3(0.0);
+        double torqueRate = 0.5;
+        if (input.isKeyDown(GLFW_KEY_I)) simState.torqueInput.x += torqueRate;
+        if (input.isKeyDown(GLFW_KEY_K)) simState.torqueInput.x -= torqueRate;
+        if (input.isKeyDown(GLFW_KEY_J)) simState.torqueInput.y += torqueRate;
+        if (input.isKeyDown(GLFW_KEY_L)) simState.torqueInput.y -= torqueRate;
+        if (input.isKeyDown(GLFW_KEY_U)) simState.torqueInput.z += torqueRate;
+        if (input.isKeyDown(GLFW_KEY_O)) simState.torqueInput.z -= torqueRate;
+
+        // Step physics
+        physics.step(simState, dt);
+
+        // Camera follows lander when attached
+        if (attachedToLander) {
+            camera.setPosition(simState.position);
+        }
 
         camera.setAspect(static_cast<double>(swapchain.extent().width) /
                          static_cast<double>(swapchain.extent().height));
