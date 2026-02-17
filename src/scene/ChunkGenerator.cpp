@@ -1,7 +1,6 @@
 // About: Cubesphere patch mesh generation — projects cube face onto sphere with heightmap.
 
 #include "scene/ChunkGenerator.h"
-#include "sim/TerrainQuery.h"
 
 #include <cmath>
 
@@ -38,55 +37,19 @@ ChunkMeshData ChunkGenerator::generate(int faceIndex,
     double uStep = (u1 - u0) / static_cast<double>(gridSize - 1);
     double vStep = (v1 - v0) / static_cast<double>(gridSize - 1);
 
-    // Generate vertex positions and heights
+    // Generate vertex positions with sphere normals (flat terrain, no heightmap)
     for (uint32_t j = 0; j < gridSize; j++) {
         for (uint32_t i = 0; i < gridSize; i++) {
             double u = u0 + i * uStep;
             double v = v0 + j * vStep;
 
             glm::dvec3 dir = facePointToSphere(faceIndex, u, v);
-
-            // Convert sphere direction to lat/lon for heightmap sampling
-            double lat = std::asin(dir.y);
-            double lon = std::atan2(dir.z, dir.x);
-
-            double h = luna::sim::sampleTerrainHeight(lat, lon);
-            glm::dvec3 worldPos = dir * (radius + h);
+            glm::dvec3 worldPos = dir * radius;
 
             uint32_t idx = j * gridSize + i;
             data.vertices[idx].position = glm::vec3(worldPos - data.worldCenter);
-            data.vertices[idx].height = static_cast<float>(h);
-        }
-    }
-
-    // Compute normals via central differencing
-    double dU = uStep * 0.5;
-    double dV = vStep * 0.5;
-
-    for (uint32_t j = 0; j < gridSize; j++) {
-        for (uint32_t i = 0; i < gridSize; i++) {
-            double u = u0 + i * uStep;
-            double v = v0 + j * vStep;
-
-            // Sample 4 neighbors
-            auto sampleWorld = [&](double su, double sv) -> glm::dvec3 {
-                glm::dvec3 d = facePointToSphere(faceIndex, su, sv);
-                double lat = std::asin(d.y);
-                double lon = std::atan2(d.z, d.x);
-                double h = luna::sim::sampleTerrainHeight(lat, lon);
-                return d * (radius + h);
-            };
-
-            glm::dvec3 pL = sampleWorld(u - dU, v);
-            glm::dvec3 pR = sampleWorld(u + dU, v);
-            glm::dvec3 pD = sampleWorld(u, v - dV);
-            glm::dvec3 pU = sampleWorld(u, v + dV);
-
-            glm::dvec3 tangentU = pR - pL;
-            glm::dvec3 tangentV = pU - pD;
-            glm::dvec3 normal = glm::normalize(glm::cross(tangentU, tangentV));
-
-            data.vertices[j * gridSize + i].normal = glm::vec3(normal);
+            data.vertices[idx].normal   = glm::vec3(dir);
+            data.vertices[idx].height   = 0.0f;
         }
     }
 
