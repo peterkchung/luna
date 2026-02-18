@@ -86,9 +86,15 @@ add_library(luna_scene STATIC
 target_include_directories(luna_scene PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(luna_scene PUBLIC luna_core luna_sim luna_util)
 
+# --- HUD library ---
+add_library(luna_hud STATIC
+    src/hud/Hud.cpp)
+target_include_directories(luna_hud PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(luna_hud PUBLIC luna_core luna_scene luna_sim luna_util)
+
 # --- Executable ---
 add_executable(luna3d src/main.cpp)
 target_link_libraries(luna3d PRIVATE
-    luna_core luna_scene luna_sim luna_input luna_camera luna_util
+    luna_core luna_scene luna_hud luna_sim luna_input luna_camera luna_util
     Vulkan::Vulkan glfw)
 add_dependencies(luna3d shaders)

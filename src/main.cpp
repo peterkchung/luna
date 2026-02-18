@@ -1,4 +1,4 @@
-// About: Entry point for the Luna lunar landing simulator.
+// About: Entry point for the Luna Artemis-era lunar landing simulator.
 
 #include "core/VulkanContext.h"
 #include "core/Swapchain.h"
@@ -13,6 +13,7 @@
 #include "scene/CubesphereBody.h"
 #include "scene/ChunkGenerator.h"
 #include "scene/Starfield.h"
+#include "hud/Hud.h"
 #include "sim/SimState.h"
 #include "sim/Physics.h"
 #include "sim/TerrainQuery.h"
@@ -97,14 +98,26 @@ int main() {
         .setPushConstantSize(sizeof(StarfieldPushConstants))
         .build();
 
-    luna::scene::Starfield starfield(ctx, commandPool);
+    // HUD pipeline (screen-space overlay, no depth test, alpha blending)
+    auto hudPipeline = Pipeline::Builder(ctx, renderPass.handle())
+        .setShaders("shaders/hud.vert.spv", "shaders/hud.frag.spv")
+        .setVertexBinding(sizeof(luna::hud::HudVertex), {
+            {0, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(luna::hud::HudVertex, position))},
+            {1, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(luna::hud::HudVertex, uv))},
+            {2, 0, VK_FORMAT_R32_SFLOAT,    static_cast<uint32_t>(offsetof(luna::hud::HudVertex, instrumentId))},
+        })
+        .setCullMode(VK_CULL_MODE_NONE)
+        .enableAlphaBlending()
+        .setPushConstantSize(sizeof(luna::hud::HudPushConstants))
+        .build();
 
-    // Build spherical Moon (cubesphere with dynamic quadtree LOD)
+    luna::scene::Starfield starfield(ctx, commandPool);
+    luna::hud::Hud hud(ctx, commandPool);
+
     luna::scene::CubesphereBody moon(ctx, commandPool, luna::util::LUNAR_RADIUS);
 
-    // Physics simulation
+    // Starship HLS starts in 100km circular orbit (post-transfer from NRHO)
     luna::sim::SimState simState;
-    // Start in 100km circular orbit (velocity perpendicular to radial direction)
     double orbitR = luna::util::LUNAR_RADIUS + 100'000.0;
     double orbitV = std::sqrt(luna::util::LUNAR_GM / orbitR);
     simState.position = glm::dvec3(0.0, -orbitR, 0.0);
@@ -244,6 +257,12 @@ int main() {
         // Draw Moon (cubesphere handles per-chunk push constants internally)
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, terrainPipeline.handle());
         moon.draw(cmd, terrainPipeline.layout(), vp, camera.position(), sunDir);
+
+        // Draw HUD overlay (screen-space, after all world geometry)
+        float aspect = static_cast<float>(swapchain.extent().width) /
+                       static_cast<float>(swapchain.extent().height);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, hudPipeline.handle());
+        hud.draw(cmd, hudPipeline.layout(), simState, aspect);
 
         vkCmdEndRenderPass(cmd);
         vkEndCommandBuffer(cmd);
