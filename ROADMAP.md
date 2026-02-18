@@ -1,6 +1,6 @@
 # Luna — Roadmap
 
-Development phases for building a realistic lunar landing simulator. Each phase produces a runnable, visually meaningful result that builds on the previous.
+Development phases for building a realistic Artemis-era lunar landing simulator. The lander is modeled on SpaceX's Starship HLS (Human Landing System), selected by NASA for Artemis III and beyond. Each phase produces a runnable, visually meaningful result that builds on the previous.
 
 ---
 
@@ -36,7 +36,6 @@ Development phases for building a realistic lunar landing simulator. Each phase 
 - [x] Implement `ChunkGenerator` — produces vertex/index data per patch
 - [x] Implement `CubesphereBody` — manages 6 faces, each subdivided into patches
 - [x] Store vertex positions relative to patch center (chunk-local coordinates)
-- [x] ~~Apply procedural heightmap displacement on the sphere surface~~ (removed — flat terrain placeholder until NASA LOLA data)
 - [x] Replace flat `Terrain` with `CubesphereBody` in main loop
 - [x] Start camera at 100km altitude
 
@@ -46,18 +45,21 @@ Development phases for building a realistic lunar landing simulator. Each phase 
 - [x] Skirt geometry to fill T-junction gaps between LOD levels
 - [x] Frustum culling (Gribb/Hartmann plane extraction, bounding sphere test)
 - [x] Conservative bounding radius from corner/edge midpoint sampling
-- [x] Mesh upload budget (max 32 splits per frame)
+- [x] Mesh upload budget (max 64 splits per frame, breadth-first refinement)
 - [x] Batched GPU uploads via shared staging buffer (StagingBatch)
 - [x] Deferred mesh destruction to prevent use-after-free during batched transfers
+- [x] Frustum-aware LOD — only split visible nodes
+- [x] Distance-sorted child traversal for balanced budget distribution
+- [x] Lazy staging batch allocation — zero Vulkan overhead when LOD is converged
 
 ### Phase D — Physics Simulation
 - [x] Implement `SimState` — position, velocity, orientation, fuel, flight phase
 - [x] Implement `Physics` — semi-implicit Euler integration
 - [x] Lunar gravity: `a = -GM/r^2 * normalize(position)` (GM = 4.9028695e12)
-- [x] Thrust: body-frame +Y, transformed by orientation quaternion
+- [x] Thrust: body-frame +Y via 2× Raptor Vacuum (4.4 MN max, Isp 380s)
 - [x] Fuel consumption based on specific impulse
 - [x] Terrain collision via `TerrainQuery` heightmap lookup
-- [x] Landing/crash detection (vertical speed < 2 m/s, surface speed < 1 m/s)
+- [x] Landing/crash detection (vertical speed < 4 m/s, surface speed < 2 m/s)
 - [x] Input mapping: throttle (Z/X), rotation torque (IJKL/UO)
 - [x] Start in 100km circular orbit (v = ~1633 m/s prograde)
 
@@ -72,23 +74,56 @@ Development phases for building a realistic lunar landing simulator. Each phase 
 - [x] Pipeline builder additions: `setDepthWrite(bool)`, `enableAlphaBlending()`
 - [x] Camera starts on -Y axis for natural Vulkan Y-down orientation
 
+### Phase F — Real Terrain Data
+- [x] NASA LOLA heightmap loading (ldem_16.tif, 16 ppd equirectangular)
+- [x] Minimal TIFF parser — no external library dependency
+- [x] Bilinear interpolation with longitude wrapping
+- [x] Vertex displacement by real elevation data
+- [x] Central differencing normals from heightmap samples
+- [x] Topographic contour lines (500m spacing, fwidth/smoothstep)
+- [x] Additive bounding radius margin for terrain displacement (±12km)
+
+---
+
+## In Progress
+
+### Phase G — HUD (Core Flight Instruments)
+- [ ] Seven-segment displays for altitude, vertical speed, surface speed
+- [ ] Bar gauges for throttle and fuel
+- [ ] Procedural rendering (no textures) — all push-constant driven
+- [ ] Screen-space overlay pipeline (alpha blend, no depth test)
+
 ---
 
 ## Future
 
 Features beyond the core simulation phases, in priority order.
 
-### Real Terrain Data
-- NASA LOLA heightmap loading (TIFF → mesh)
-- SLDEM2015 at 512 ppd (~60m resolution)
-- Specific landing sites (Tranquility Base, Shackleton crater)
-
-### Cockpit + HUD
-- Cockpit frame geometry (Apollo LM-style window framing)
-- Altitude/velocity/attitude instruments
-- Fuel gauge with estimated burn time
+### HUD Phase 2 — Cockpit + Advanced Indicators
+- Cockpit frame geometry (Starship HLS window framing)
+- Attitude indicator / NavBall
 - Trajectory prediction overlay (forward-integrated arc)
 - Landing target marker (world-to-screen projection)
+- Fuel gauge with estimated burn time remaining
+
+### NRHO Starting Orbit
+- Near-Rectilinear Halo Orbit (~3,250 km perilune / ~71,000 km apolune)
+- Transfer burn from NRHO to low lunar orbit
+- Full Artemis III descent profile: NRHO → low orbit → powered descent
+
+### Terrain Relative Navigation
+- Starship HLS uses TRN + Lidar for safe landing site selection
+- Hazard detection overlay showing slope/roughness analysis
+- Automatic landing site targeting at lunar south pole
+
+### Mid-Body Thruster Switchover
+- Starship HLS switches from Raptor to CH4/LOX RCS at ~50m altitude
+- Reduced thrust for dust mitigation during final descent
+- Separate thruster model with lower Isp and thrust
+
+### Higher Resolution Terrain
+- SLDEM2015 at 512 ppd (~60m resolution)
+- Specific landing sites (Shackleton crater rim, south pole regions)
 
 ### Celestial Bodies (CSPICE)
 - NASA SPICE toolkit integration for real ephemeris data
@@ -100,10 +135,9 @@ Features beyond the core simulation phases, in priority order.
 - Keplerian orbit computation and visualization
 - Deorbit burn calculations
 - Gravity turn guidance
-- Mission timeline (orbit → deorbit → powered descent → terminal → landing)
+- Mission timeline (NRHO → transfer → powered descent → terminal → landing)
 
 ### Polish
-- Particle exhaust effects
-- NavBall attitude indicator
+- Particle exhaust effects (Raptor plume)
 - Configuration file for mission parameters
 - Windows/macOS build support

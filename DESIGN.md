@@ -18,11 +18,11 @@ luna/
 ├── CHANGELOG.md *
 │
 ├── assets/
-│   ├── terrain/                # NASA LOLA heightmaps (future)
+│   ├── terrain/                # NASA LOLA heightmaps
 │   ├── ephemeris/              # SPICE kernels (future)
 │   └── models/                 # OBJ meshes (future)
 │       ├── cockpit.obj
-│       └── lander.obj
+│       └── starship-hls.obj
 │
 ├── shaders/
 │   ├── terrain.vert *          # Terrain mesh vertex shader (camera-relative)
@@ -153,14 +153,14 @@ The cubesphere pipeline:
 1. 6 cube faces, each the root of a quadtree
 2. Each quadtree node covers a UV region on its face
 3. Node UV coordinates are projected onto the unit sphere, then scaled to `LUNAR_RADIUS`
-4. Terrain is currently flat (NASA LOLA heightmap data planned)
+4. Terrain displaced by NASA LOLA heightmap (16 ppd equirectangular TIFF)
 5. Vertex positions are stored **relative to the patch center** (preserves float precision)
 6. LOD selection: nodes split/merge based on screen-space geometric error
 7. Skirt geometry fills T-junction gaps between LOD levels
 
 **ChunkGenerator** produces vertex/index data for a single quadtree patch:
 - Projects cube-face UV grid onto sphere surface
-- Normals are the sphere direction (flat terrain, no heightmap displacement yet)
+- Vertices displaced by LOLA heightmap, normals computed via central differencing
 - Stores positions relative to patch center (`dvec3` center, `vec3` local offsets)
 - Generates skirt geometry on all 4 edges to fill T-junction gaps
 
@@ -178,10 +178,10 @@ struct SimState {
     glm::dquat orientation;        // body-to-world quaternion
     glm::dvec3 angularVelocity;    // rad/s, body frame
 
-    double dryMass = 2150.0;       // kg (Apollo LM descent stage)
-    double fuelMass = 8200.0;      // kg
-    double specificImpulse = 311.0; // seconds (LMDE)
-    double maxThrust = 45040.0;    // Newtons
+    double dryMass = 85000.0;       // kg (Starship HLS)
+    double fuelMass = 200000.0;     // kg (CH4/LOX)
+    double specificImpulse = 380.0; // seconds (Raptor Vacuum)
+    double maxThrust = 4400000.0;   // Newtons (2x Raptor Vacuum)
     double throttle = 0.0;
     glm::dvec3 torqueInput{0.0};
 
@@ -195,14 +195,14 @@ struct SimState {
 
 **Physics** handles 6DOF rigid body dynamics with semi-implicit Euler integration:
 - Gravity: `a = -GM/r^2 * normalize(position)` where `GM = 4.9028695e12 m^3/s^2`
-- Thrust: body-frame +Y transformed to world via orientation quaternion
+- Thrust: body-frame +Y transformed to world via orientation quaternion (2× Raptor Vacuum)
 - Fuel consumption: `dm/dt = throttle * maxThrust / (Isp * g0)`
 - Collision detection against terrain heightmap
-- Landing criteria: vertical speed < 2 m/s, surface speed < 1 m/s
+- Landing criteria: vertical speed < 4 m/s, surface speed < 2 m/s
 
 Why double precision? At orbital altitude (~100km), Moon-centered coordinates are ~1,837,400m. A 32-bit float gives ~0.1m resolution — acceptable for position, but velocity integration accumulates rounding error over minutes. Doubles give ~15 digits of precision, eliminating drift. Downcast to float only at the sim-to-render boundary.
 
-**TerrainQuery** provides heightmap sampling as a pure function, shared by both mesh generation (scene/) and collision detection (sim/). Currently returns 0 (flat terrain) — will be replaced with NASA LOLA data loading.
+**TerrainQuery** provides heightmap sampling as a pure function, shared by both mesh generation (scene/) and collision detection (sim/). Loads NASA LOLA elevation data at startup; falls back to flat terrain if the TIFF is missing.
 
 ### camera/ — View System
 
@@ -265,7 +265,7 @@ Vertex positions in each chunk are relative to the chunk center (~50m max magnit
 - **World units:** meters
 - **World axes:** +X toward 0°N 0°E, +Y toward north pole, +Z toward 0°N 90°E (IAU_MOON frame)
 - **Camera start:** -Y axis (100km above surface), default up (+Y) naturally aligns with Vulkan's Y-down
-- **Lander local:** +X right, +Y up (thrust direction), +Z forward (out the window)
+- **Lander local:** +X right, +Y up (Raptor thrust direction), +Z forward
 - **Chunk local:** positions relative to chunk center on the sphere surface
 
 ### Depth Buffer
@@ -339,8 +339,6 @@ struct ChunkVertex {
 ## Data Sources
 
 ### Lunar Terrain — NASA LOLA
-
-Currently flat (procedural noise removed). Planned data source:
 
 **Source:** CGI Moon Kit (https://svs.gsfc.nasa.gov/4720/)
 - Displacement maps at 64, 16, and 4 pixels per degree

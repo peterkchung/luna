@@ -1,4 +1,4 @@
-// About: 6DOF rigid body state for the lunar lander — position, velocity, orientation, fuel.
+// About: 6DOF rigid body state for the Starship HLS lunar lander.
 
 #pragma once
 
@@ -14,12 +14,12 @@ struct SimState {
     glm::dquat orientation{1.0, 0.0, 0.0, 0.0};
     glm::dvec3 angularVelocity{0.0};
 
-    double dryMass       = 2150.0;    // kg (Apollo LM descent stage)
-    double fuelMass      = 8200.0;    // kg
-    double specificImpulse = 311.0;   // seconds (AJ10-137)
-    double maxThrust     = 45040.0;   // Newtons
-    double throttle      = 0.0;       // 0.0–1.0
-    glm::dvec3 torqueInput{0.0};      // body-frame torque command (rad/s^2)
+    double dryMass         = 85000.0;    // kg (Starship HLS — landing gear, solar, elevator, no heat shield)
+    double fuelMass        = 200000.0;   // kg (CH4/LOX, loaded for descent from low lunar orbit)
+    double specificImpulse = 380.0;      // seconds (Raptor Vacuum)
+    double maxThrust       = 4400000.0;  // Newtons (2x Raptor Vacuum)
+    double throttle        = 0.0;        // 0.0–1.0
+    glm::dvec3 torqueInput{0.0};         // body-frame torque command (rad/s^2)
 
     FlightPhase phase = FlightPhase::Orbit;
     double altitude      = 0.0;       // above terrain surface (meters)
