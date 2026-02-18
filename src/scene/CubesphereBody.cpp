@@ -7,7 +7,9 @@
 #include "core/VulkanContext.h"
 #include "util/Log.h"
 
+#include <algorithm>
 #include <cmath>
+#include <numeric>
 
 namespace luna::scene {
 
@@ -17,6 +19,8 @@ struct TerrainPC {
     glm::vec3 cameraOffset;
     float     _pad0;
     glm::vec4 sunDirection;
+    glm::vec3 cameraWorldPos;
+    float     _pad1;
 };
 
 CubesphereBody::CubesphereBody(const luna::core::VulkanContext& ctx,
@@ -76,7 +80,9 @@ void CubesphereBody::initNode(QuadtreeNode& node, int face,
     for (const auto& p : testPoints) {
         node.boundingRadius = glm::max(node.boundingRadius, glm::length(p - node.worldCenter));
     }
-    node.boundingRadius *= 1.05; // 5% margin for heightmap displacement
+    // Additive margin for terrain displacement (LOLA range ~-9km to +11km)
+    constexpr double MAX_TERRAIN_DISPLACEMENT = 12000.0;
+    node.boundingRadius += MAX_TERRAIN_DISPLACEMENT;
 }
 
 void CubesphereBody::generateMesh(QuadtreeNode& node) {
@@ -119,7 +125,6 @@ void CubesphereBody::generateMeshBatched(QuadtreeNode& node, VkCommandBuffer& cm
 
 void CubesphereBody::update(const glm::dvec3& cameraPos,
                              double fovY, double screenHeight) {
-    uint32_t splitBudget = MAX_SPLITS_PER_FRAME;
     activeNodes_ = 0;
     batchCount_ = 0;
 
@@ -127,8 +132,19 @@ void CubesphereBody::update(const glm::dvec3& cameraPos,
     staging.begin(*ctx_, MESHES_PER_BATCH * BYTES_PER_MESH);
     VkCommandBuffer cmd = cmdPool_->beginOneShot();
 
-    for (auto& root : roots_) {
-        updateNode(*root, cameraPos, fovY, screenHeight, splitBudget, cmd, staging);
+    // Sort faces by distance to camera so the closest face gets budget priority
+    std::array<int, 6> faceOrder;
+    std::iota(faceOrder.begin(), faceOrder.end(), 0);
+    std::sort(faceOrder.begin(), faceOrder.end(), [&](int a, int b) {
+        double da = glm::length(roots_[a]->worldCenter - cameraPos);
+        double db = glm::length(roots_[b]->worldCenter - cameraPos);
+        return da < db;
+    });
+
+    // Shared budget across all faces, but process closest faces first
+    uint32_t splitBudget = MAX_SPLITS_PER_FRAME;
+    for (int fi : faceOrder) {
+        updateNode(*roots_[fi], cameraPos, fovY, screenHeight, splitBudget, cmd, staging);
     }
 
     // Flush remaining meshes
@@ -187,7 +203,7 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
             if (node.mesh)
                 deferredDestroy_.push_back(std::move(node.mesh));
 
-            // Recurse into children
+            // Recurse into children for further splitting
             for (auto& child : node.children) {
                 updateNode(*child, cameraPos, fovY, screenHeight, splitBudget, cmd, staging);
             }
@@ -288,6 +304,7 @@ void CubesphereBody::drawNode(const QuadtreeNode& node, VkCommandBuffer cmd,
             pc.viewProj = viewProj;
             pc.cameraOffset = offset;
             pc.sunDirection = sunDirection;
+            pc.cameraWorldPos = glm::vec3(cameraPos);
 
             vkCmdPushConstants(cmd, layout,
                                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,

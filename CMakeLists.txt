@@ -71,6 +71,7 @@ target_link_libraries(luna_camera PUBLIC luna_util)
 # --- Simulation library (no Vulkan dependency) ---
 add_library(luna_sim STATIC
     src/sim/TerrainQuery.cpp
+    src/sim/Heightmap.cpp
     src/sim/Physics.cpp)
 target_include_directories(luna_sim PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(luna_sim PUBLIC luna_util)

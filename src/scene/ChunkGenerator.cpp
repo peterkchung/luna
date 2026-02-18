@@ -1,6 +1,9 @@
-// About: Cubesphere patch mesh generation — projects cube face onto sphere with heightmap.
+// About: Cubesphere patch mesh generation — projects cube face onto sphere with heightmap displacement.
 
 #include "scene/ChunkGenerator.h"
+#include "sim/TerrainQuery.h"
+
+#include <cmath>
 
 namespace luna::scene {
 
@@ -18,6 +21,25 @@ glm::dvec3 ChunkGenerator::facePointToSphere(int face, double u, double v) {
     return glm::normalize(p);
 }
 
+namespace {
+
+// Sphere direction to lat/lon (Y-up: Y is polar axis)
+inline void dirToLatLon(const glm::dvec3& dir, double& lat, double& lon) {
+    lat = std::asin(glm::clamp(dir.y, -1.0, 1.0));
+    lon = std::atan2(dir.z, dir.x);
+}
+
+// Sample displaced world position from face UV coordinates
+inline glm::dvec3 sampleWorldPos(int face, double u, double v, double radius) {
+    glm::dvec3 dir = ChunkGenerator::facePointToSphere(face, u, v);
+    double lat, lon;
+    dirToLatLon(dir, lat, lon);
+    double h = luna::sim::sampleTerrainHeight(lat, lon);
+    return dir * (radius + h);
+}
+
+} // anonymous namespace
+
 ChunkMeshData ChunkGenerator::generate(int faceIndex,
                                         double u0, double u1,
                                         double v0, double v1,
@@ -25,29 +47,46 @@ ChunkMeshData ChunkGenerator::generate(int faceIndex,
                                         uint32_t gridSize) {
     ChunkMeshData data;
 
+    double uStep = (u1 - u0) / static_cast<double>(gridSize - 1);
+    double vStep = (v1 - v0) / static_cast<double>(gridSize - 1);
+
+    // Compute world center with terrain displacement
     double uMid = (u0 + u1) * 0.5;
     double vMid = (v0 + v1) * 0.5;
-    data.worldCenter = facePointToSphere(faceIndex, uMid, vMid) * radius;
+    data.worldCenter = sampleWorldPos(faceIndex, uMid, vMid, radius);
 
     uint32_t vertCount = gridSize * gridSize;
     data.vertices.resize(vertCount);
 
-    double uStep = (u1 - u0) / static_cast<double>(gridSize - 1);
-    double vStep = (v1 - v0) / static_cast<double>(gridSize - 1);
+    // Half-step offsets for central differencing normals
+    double halfU = uStep * 0.5;
+    double halfV = vStep * 0.5;
 
-    // Generate vertex positions with sphere normals (flat terrain, no heightmap)
     for (uint32_t j = 0; j < gridSize; j++) {
         for (uint32_t i = 0; i < gridSize; i++) {
             double u = u0 + i * uStep;
             double v = v0 + j * vStep;
 
-            glm::dvec3 dir = facePointToSphere(faceIndex, u, v);
-            glm::dvec3 worldPos = dir * radius;
+            glm::dvec3 worldPos = sampleWorldPos(faceIndex, u, v, radius);
+
+            // Central differencing: sample 4 neighbors, compute tangent cross product
+            glm::dvec3 pU0 = sampleWorldPos(faceIndex, u - halfU, v, radius);
+            glm::dvec3 pU1 = sampleWorldPos(faceIndex, u + halfU, v, radius);
+            glm::dvec3 pV0 = sampleWorldPos(faceIndex, u, v - halfV, radius);
+            glm::dvec3 pV1 = sampleWorldPos(faceIndex, u, v + halfV, radius);
+
+            glm::dvec3 tangentU = pU1 - pU0;
+            glm::dvec3 tangentV = pV1 - pV0;
+            glm::dvec3 normal = glm::normalize(glm::cross(tangentU, tangentV));
+
+            double lat, lon;
+            dirToLatLon(glm::normalize(worldPos), lat, lon);
+            double h = luna::sim::sampleTerrainHeight(lat, lon);
 
             uint32_t idx = j * gridSize + i;
             data.vertices[idx].position = glm::vec3(worldPos - data.worldCenter);
-            data.vertices[idx].normal   = glm::vec3(dir);
-            data.vertices[idx].height   = 0.0f;
+            data.vertices[idx].normal   = glm::vec3(normal);
+            data.vertices[idx].height   = static_cast<float>(h);
         }
     }
 
