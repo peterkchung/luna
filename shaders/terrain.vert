@@ -13,10 +13,12 @@ layout(push_constant) uniform PushConstants {
 
 layout(location = 0) out vec3 fragNormal;
 layout(location = 1) out float fragHeight;
+layout(location = 2) out vec3 fragSphereDir;
 
 void main() {
     vec3 viewPos = inPosition + pc.cameraOffset;
     gl_Position = pc.viewProj * vec4(viewPos, 1.0);
     fragNormal = inNormal;
     fragHeight = inHeight;
+    fragSphereDir = inNormal;  // sphere direction = normal on flat terrain
 }
