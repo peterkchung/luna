@@ -97,8 +97,18 @@ void CubesphereBody::generateMesh(QuadtreeNode& node) {
         static_cast<uint32_t>(meshData.indices.size()));
 }
 
+void CubesphereBody::ensureBatchStarted(VkCommandBuffer& cmd,
+                                         luna::core::StagingBatch& staging) {
+    if (!batchStarted_) {
+        staging.begin(*ctx_, MESHES_PER_BATCH * BYTES_PER_MESH);
+        cmd = cmdPool_->beginOneShot();
+        batchStarted_ = true;
+    }
+}
+
 void CubesphereBody::generateMeshBatched(QuadtreeNode& node, VkCommandBuffer& cmd,
                                           luna::core::StagingBatch& staging) {
+    ensureBatchStarted(cmd, staging);
     auto meshData = ChunkGenerator::generate(
         node.faceIndex, node.u0, node.u1, node.v0, node.v1, radius_, PATCH_GRID);
     node.worldCenter = meshData.worldCenter;
@@ -128,13 +138,13 @@ void CubesphereBody::update(const glm::dvec3& cameraPos,
                              const glm::mat4& viewProj) {
     activeNodes_ = 0;
     batchCount_ = 0;
+    batchStarted_ = false;
 
     glm::vec4 frustumPlanes[6];
     extractFrustumPlanes(viewProj, frustumPlanes);
 
     luna::core::StagingBatch staging;
-    staging.begin(*ctx_, MESHES_PER_BATCH * BYTES_PER_MESH);
-    VkCommandBuffer cmd = cmdPool_->beginOneShot();
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
 
     // Sort faces by distance to camera so the closest face gets budget priority
     std::array<int, 6> faceOrder;
@@ -145,23 +155,16 @@ void CubesphereBody::update(const glm::dvec3& cameraPos,
         return da < db;
     });
 
-    // Shared budget across all faces, but process closest faces first
     uint32_t splitBudget = MAX_SPLITS_PER_FRAME;
     for (int fi : faceOrder) {
         updateNode(*roots_[fi], cameraPos, fovY, screenHeight, splitBudget, cmd, staging, frustumPlanes);
     }
 
-    // Flush remaining meshes
-    if (batchCount_ > 0) {
+    if (batchStarted_) {
         staging.end();
         cmdPool_->endOneShot(cmd, ctx_->graphicsQueue());
-    } else {
-        staging.end();
-        vkEndCommandBuffer(cmd);
-        vkFreeCommandBuffers(ctx_->device(), cmdPool_->pool(), 1, &cmd);
     }
 
-    // Safe to destroy now — transfer command buffer has finished
     deferredDestroy_.clear();
 }
 

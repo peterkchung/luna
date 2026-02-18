@@ -95,8 +95,11 @@ private:
     const luna::core::VulkanContext* ctx_;
     const luna::core::CommandPool*   cmdPool_;
 
+    void ensureBatchStarted(VkCommandBuffer& cmd, luna::core::StagingBatch& staging);
+
     uint32_t activeNodes_ = 0;
     uint32_t batchCount_ = 0;
+    bool     batchStarted_ = false;
 
     // Meshes replaced during a batch whose VRAM buffers are still referenced
     // by the in-flight transfer command buffer. Destroyed after submit.
