@@ -9,6 +9,7 @@ namespace luna::core {
 
 class VulkanContext;
 class CommandPool;
+struct StagingBatch;
 
 class Buffer {
 public:
@@ -27,13 +28,13 @@ public:
     static Buffer createStatic(const VulkanContext& ctx, const CommandPool& cmdPool,
                                VkBufferUsageFlags usage, const void* data, VkDeviceSize size);
 
-    // Record a staging copy into an existing command buffer (no submit, no wait).
-    // Caller must keep stagingOut alive until the command buffer finishes execution.
+    // Record a staging copy into an existing command buffer using shared staging memory.
+    // Caller must keep staging alive until the command buffer finishes execution.
     static Buffer createStaticBatch(const VulkanContext& ctx,
                                     VkCommandBuffer transferCmd,
                                     VkBufferUsageFlags usage,
                                     const void* data, VkDeviceSize size,
-                                    Buffer& stagingOut);
+                                    StagingBatch& staging);
 
     // Host-visible buffer for per-frame updates
     static Buffer createDynamic(const VulkanContext& ctx, VkBufferUsageFlags usage,
@@ -54,6 +55,19 @@ private:
     VkBuffer       buffer_ = VK_NULL_HANDLE;
     VkDeviceMemory memory_ = VK_NULL_HANDLE;
     VkDeviceSize   size_   = 0;
+};
+
+// Bump allocator over a single host-visible staging buffer.
+// Reduces per-batch staging allocations from N to 1, avoiding RADV BO-list limits.
+struct StagingBatch {
+    Buffer       buffer;
+    void*        mapped = nullptr;
+    VkDeviceSize offset = 0;
+    VkDeviceSize capacity = 0;
+
+    void begin(const VulkanContext& ctx, VkDeviceSize cap);
+    void end();
+    VkDeviceSize write(const void* data, VkDeviceSize size);
 };
 
 } // namespace luna::core

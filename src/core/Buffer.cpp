@@ -114,20 +114,33 @@ Buffer Buffer::createStatic(const VulkanContext& ctx, const CommandPool& cmdPool
     return buffer;
 }
 
+void StagingBatch::begin(const VulkanContext& ctx, VkDeviceSize cap) {
+    capacity = cap;
+    offset = 0;
+    buffer = Buffer::createDynamic(ctx, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, cap);
+    mapped = buffer.map();
+}
+
+void StagingBatch::end() {
+    if (mapped) {
+        buffer.unmap();
+        mapped = nullptr;
+    }
+}
+
+VkDeviceSize StagingBatch::write(const void* data, VkDeviceSize size) {
+    VkDeviceSize srcOffset = offset;
+    std::memcpy(static_cast<char*>(mapped) + offset, data, static_cast<size_t>(size));
+    offset += size;
+    return srcOffset;
+}
+
 Buffer Buffer::createStaticBatch(const VulkanContext& ctx,
                                  VkCommandBuffer transferCmd,
                                  VkBufferUsageFlags usage,
                                  const void* data, VkDeviceSize size,
-                                 Buffer& stagingOut) {
-    stagingOut = createRaw(
-        ctx.device(), ctx.physicalDevice(), size,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-    void* mapped;
-    vkMapMemory(ctx.device(), stagingOut.memory_, 0, size, 0, &mapped);
-    std::memcpy(mapped, data, static_cast<size_t>(size));
-    vkUnmapMemory(ctx.device(), stagingOut.memory_);
+                                 StagingBatch& staging) {
+    VkDeviceSize srcOffset = staging.write(data, size);
 
     auto buffer = createRaw(
         ctx.device(), ctx.physicalDevice(), size,
@@ -135,8 +148,9 @@ Buffer Buffer::createStaticBatch(const VulkanContext& ctx,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     VkBufferCopy copyRegion{};
+    copyRegion.srcOffset = srcOffset;
     copyRegion.size = size;
-    vkCmdCopyBuffer(transferCmd, stagingOut.handle(), buffer.handle(), 1, &copyRegion);
+    vkCmdCopyBuffer(transferCmd, staging.buffer.handle(), buffer.handle(), 1, &copyRegion);
 
     return buffer;
 }

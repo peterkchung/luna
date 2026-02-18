@@ -5,7 +5,6 @@
 #include "core/Buffer.h"
 #include <vulkan/vulkan.h>
 #include <cstdint>
-#include <vector>
 
 namespace luna::core {
 class VulkanContext;
@@ -21,11 +20,11 @@ public:
          const void* vertexData, uint32_t vertexSize,
          const void* indexData,  uint32_t indexCount);
 
-    // Batched variant: records copies into transferCmd, appends staging buffers to stagingOut
+    // Batched variant: records copies into transferCmd using shared staging memory
     Mesh(const luna::core::VulkanContext& ctx, VkCommandBuffer transferCmd,
          const void* vertexData, uint32_t vertexSize,
          const void* indexData,  uint32_t indexCount,
-         std::vector<luna::core::Buffer>& stagingOut);
+         luna::core::StagingBatch& staging);
 
     void draw(VkCommandBuffer cmd) const;
 

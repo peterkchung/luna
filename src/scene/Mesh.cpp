@@ -22,20 +22,15 @@ Mesh::Mesh(const luna::core::VulkanContext& ctx, const luna::core::CommandPool& 
 Mesh::Mesh(const luna::core::VulkanContext& ctx, VkCommandBuffer transferCmd,
            const void* vertexData, uint32_t vertexSize,
            const void* indexData,  uint32_t indexCount,
-           std::vector<luna::core::Buffer>& stagingOut)
+           luna::core::StagingBatch& staging)
     : indexCount_(indexCount)
 {
-    luna::core::Buffer vertStaging, idxStaging;
-
     vertexBuffer_ = luna::core::Buffer::createStaticBatch(ctx, transferCmd,
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertexData, vertexSize, vertStaging);
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertexData, vertexSize, staging);
 
     indexBuffer_ = luna::core::Buffer::createStaticBatch(ctx, transferCmd,
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indexData,
-        static_cast<VkDeviceSize>(indexCount) * sizeof(uint32_t), idxStaging);
-
-    stagingOut.push_back(std::move(vertStaging));
-    stagingOut.push_back(std::move(idxStaging));
+        static_cast<VkDeviceSize>(indexCount) * sizeof(uint32_t), staging);
 }
 
 void Mesh::draw(VkCommandBuffer cmd) const {

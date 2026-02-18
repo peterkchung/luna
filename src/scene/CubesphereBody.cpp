@@ -2,6 +2,9 @@
 
 #include "scene/CubesphereBody.h"
 #include "scene/ChunkGenerator.h"
+#include "core/Buffer.h"
+#include "core/CommandPool.h"
+#include "core/VulkanContext.h"
 #include "util/Log.h"
 
 #include <cmath>
@@ -20,11 +23,25 @@ CubesphereBody::CubesphereBody(const luna::core::VulkanContext& ctx,
                                const luna::core::CommandPool& cmdPool,
                                double radius)
     : radius_(radius), ctx_(&ctx), cmdPool_(&cmdPool) {
-    // Create 6 root nodes (one per cube face), each covering [-1,1] x [-1,1]
+
+    // 6 root meshes fit comfortably in one batch (12 device-local BOs + 1 staging = 13)
+    luna::core::StagingBatch staging;
+    staging.begin(ctx, 6 * BYTES_PER_MESH);
+    VkCommandBuffer cmd = cmdPool.beginOneShot();
+
     for (int face = 0; face < 6; face++) {
         roots_[face] = std::make_unique<QuadtreeNode>();
         initNode(*roots_[face], face, -1.0, 1.0, -1.0, 1.0, 0);
-        generateMesh(*roots_[face]);
+        generateMeshBatched(*roots_[face], cmd, staging);
+    }
+
+    // Flush remaining
+    if (batchCount_ > 0) {
+        staging.end();
+        cmdPool.endOneShot(cmd, ctx.graphicsQueue());
+    } else {
+        vkEndCommandBuffer(cmd);
+        vkFreeCommandBuffers(ctx.device(), cmdPool.pool(), 1, &cmd);
     }
 
     LOG_INFO("Cubesphere initialized with 6 root nodes");
@@ -74,25 +91,70 @@ void CubesphereBody::generateMesh(QuadtreeNode& node) {
         static_cast<uint32_t>(meshData.indices.size()));
 }
 
+void CubesphereBody::generateMeshBatched(QuadtreeNode& node, VkCommandBuffer& cmd,
+                                          luna::core::StagingBatch& staging) {
+    auto meshData = ChunkGenerator::generate(
+        node.faceIndex, node.u0, node.u1, node.v0, node.v1, radius_, PATCH_GRID);
+    node.worldCenter = meshData.worldCenter;
+    node.mesh = std::make_unique<Mesh>(
+        *ctx_, cmd,
+        meshData.vertices.data(),
+        static_cast<uint32_t>(meshData.vertices.size() * sizeof(ChunkVertex)),
+        meshData.indices.data(),
+        static_cast<uint32_t>(meshData.indices.size()),
+        staging);
+    batchCount_++;
+
+    // Flush when sub-batch is full to keep BO count per submission low
+    if (batchCount_ >= MESHES_PER_BATCH) {
+        staging.end();
+        cmdPool_->endOneShot(cmd, ctx_->graphicsQueue());
+
+        // Start fresh sub-batch
+        staging.begin(*ctx_, MESHES_PER_BATCH * BYTES_PER_MESH);
+        cmd = cmdPool_->beginOneShot();
+        batchCount_ = 0;
+    }
+}
+
 void CubesphereBody::update(const glm::dvec3& cameraPos,
                              double fovY, double screenHeight) {
     uint32_t splitBudget = MAX_SPLITS_PER_FRAME;
     activeNodes_ = 0;
+    batchCount_ = 0;
+
+    luna::core::StagingBatch staging;
+    staging.begin(*ctx_, MESHES_PER_BATCH * BYTES_PER_MESH);
+    VkCommandBuffer cmd = cmdPool_->beginOneShot();
 
     for (auto& root : roots_) {
-        updateNode(*root, cameraPos, fovY, screenHeight, splitBudget);
+        updateNode(*root, cameraPos, fovY, screenHeight, splitBudget, cmd, staging);
     }
+
+    // Flush remaining meshes
+    if (batchCount_ > 0) {
+        staging.end();
+        cmdPool_->endOneShot(cmd, ctx_->graphicsQueue());
+    } else {
+        staging.end();
+        vkEndCommandBuffer(cmd);
+        vkFreeCommandBuffers(ctx_->device(), cmdPool_->pool(), 1, &cmd);
+    }
+
+    // Safe to destroy now — transfer command buffer has finished
+    deferredDestroy_.clear();
 }
 
 void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
                                  double fovY, double screenHeight,
-                                 uint32_t& splitBudget) {
+                                 uint32_t& splitBudget,
+                                 VkCommandBuffer& cmd,
+                                 luna::core::StagingBatch& staging) {
     double distance = glm::length(node.worldCenter - cameraPos);
     // Avoid division by zero for camera inside the node's bounding sphere
     distance = glm::max(distance, node.boundingRadius * 0.1);
 
     // Geometric error: approximate as the arc length of one grid cell
-    // Patch arc ≈ 2 * radius * sin(patchAngle/2), cell = patchArc / (PATCH_GRID - 1)
     double patchArc = node.boundingRadius * 2.0;
     double geometricError = patchArc / static_cast<double>(PATCH_GRID - 1);
 
@@ -117,16 +179,17 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
             initNode(*node.children[3], node.faceIndex, uMid, node.u1, vMid, node.v1, node.depth + 1);
 
             for (auto& child : node.children) {
-                generateMesh(*child);
+                generateMeshBatched(*child, cmd, staging);
             }
             splitBudget -= 4;
 
-            // All children have meshes, release parent
-            node.mesh.reset();
+            // Defer parent mesh destruction until after batch submit
+            if (node.mesh)
+                deferredDestroy_.push_back(std::move(node.mesh));
 
             // Recurse into children
             for (auto& child : node.children) {
-                updateNode(*child, cameraPos, fovY, screenHeight, splitBudget);
+                updateNode(*child, cameraPos, fovY, screenHeight, splitBudget, cmd, staging);
             }
         } else {
             activeNodes_++;
@@ -150,18 +213,20 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
         }
 
         if (allChildrenLeaves && maxChildError < MERGE_THRESHOLD) {
-            // Merge: regenerate parent mesh, destroy children
+            // Merge: regenerate parent mesh, defer child destruction
             if (!node.hasMesh()) {
-                generateMesh(node);
+                generateMeshBatched(node, cmd, staging);
             }
             for (auto& child : node.children) {
+                if (child && child->mesh)
+                    deferredDestroy_.push_back(std::move(child->mesh));
                 child.reset();
             }
             activeNodes_++;
         } else {
             // Recurse into children
             for (auto& child : node.children) {
-                if (child) updateNode(*child, cameraPos, fovY, screenHeight, splitBudget);
+                if (child) updateNode(*child, cameraPos, fovY, screenHeight, splitBudget, cmd, staging);
             }
         }
     }
