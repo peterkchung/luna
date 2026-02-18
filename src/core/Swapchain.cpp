@@ -22,11 +22,13 @@ Swapchain::~Swapchain() {
     cleanup();
 }
 
-void Swapchain::recreate() {
-    // Wait until window is non-zero size (minimized)
+bool Swapchain::recreate() {
+    // Wait until window is non-zero size (minimized), but bail if closing
     int w = 0, h = 0;
     glfwGetFramebufferSize(ctx_.window(), &w, &h);
     while (w == 0 || h == 0) {
+        if (glfwWindowShouldClose(ctx_.window()))
+            return false;
         glfwGetFramebufferSize(ctx_.window(), &w, &h);
         glfwWaitEvents();
     }
@@ -34,6 +36,7 @@ void Swapchain::recreate() {
     vkDeviceWaitIdle(ctx_.device());
     cleanup();
     create();
+    return true;
 }
 
 void Swapchain::create() {

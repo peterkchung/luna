@@ -18,7 +18,8 @@ public:
     Swapchain(const Swapchain&) = delete;
     Swapchain& operator=(const Swapchain&) = delete;
 
-    void recreate();
+    // Returns false if the window is closing and recreation was skipped.
+    bool recreate();
 
     VkSwapchainKHR handle()     const { return swapchain_; }
     VkFormat       imageFormat() const { return format_; }
