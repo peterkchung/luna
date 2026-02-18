@@ -124,9 +124,13 @@ void CubesphereBody::generateMeshBatched(QuadtreeNode& node, VkCommandBuffer& cm
 }
 
 void CubesphereBody::update(const glm::dvec3& cameraPos,
-                             double fovY, double screenHeight) {
+                             double fovY, double screenHeight,
+                             const glm::mat4& viewProj) {
     activeNodes_ = 0;
     batchCount_ = 0;
+
+    glm::vec4 frustumPlanes[6];
+    extractFrustumPlanes(viewProj, frustumPlanes);
 
     luna::core::StagingBatch staging;
     staging.begin(*ctx_, MESHES_PER_BATCH * BYTES_PER_MESH);
@@ -144,7 +148,7 @@ void CubesphereBody::update(const glm::dvec3& cameraPos,
     // Shared budget across all faces, but process closest faces first
     uint32_t splitBudget = MAX_SPLITS_PER_FRAME;
     for (int fi : faceOrder) {
-        updateNode(*roots_[fi], cameraPos, fovY, screenHeight, splitBudget, cmd, staging);
+        updateNode(*roots_[fi], cameraPos, fovY, screenHeight, splitBudget, cmd, staging, frustumPlanes);
     }
 
     // Flush remaining meshes
@@ -165,7 +169,8 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
                                  double fovY, double screenHeight,
                                  uint32_t& splitBudget,
                                  VkCommandBuffer& cmd,
-                                 luna::core::StagingBatch& staging) {
+                                 luna::core::StagingBatch& staging,
+                                 const glm::vec4 frustumPlanes[6]) {
     double distance = glm::length(node.worldCenter - cameraPos);
     // Avoid division by zero for camera inside the node's bounding sphere
     distance = glm::max(distance, node.boundingRadius * 0.1);
@@ -178,9 +183,13 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
     double screenError = (geometricError / distance) *
                          (screenHeight / (2.0 * std::tan(fovY * 0.5)));
 
+    // Test visibility — only spend split budget on nodes the camera can see
+    glm::vec3 offset = glm::vec3(node.worldCenter - cameraPos);
+    bool visible = sphereInFrustum(frustumPlanes, offset, static_cast<float>(node.boundingRadius));
+
     if (node.isLeaf()) {
-        // Consider splitting — require budget for all 4 children to avoid partial splits
-        if (screenError > SPLIT_THRESHOLD && node.depth < MAX_DEPTH && splitBudget >= 4) {
+        // Only split visible nodes — off-screen nodes keep their current detail
+        if (visible && screenError > SPLIT_THRESHOLD && node.depth < MAX_DEPTH && splitBudget >= 4) {
             double uMid = (node.u0 + node.u1) * 0.5;
             double vMid = (node.v0 + node.v1) * 0.5;
 
@@ -205,7 +214,7 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
 
             // Recurse into children for further splitting
             for (auto& child : node.children) {
-                updateNode(*child, cameraPos, fovY, screenHeight, splitBudget, cmd, staging);
+                updateNode(*child, cameraPos, fovY, screenHeight, splitBudget, cmd, staging, frustumPlanes);
             }
         } else {
             activeNodes_++;
@@ -242,7 +251,7 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
         } else {
             // Recurse into children
             for (auto& child : node.children) {
-                if (child) updateNode(*child, cameraPos, fovY, screenHeight, splitBudget, cmd, staging);
+                if (child) updateNode(*child, cameraPos, fovY, screenHeight, splitBudget, cmd, staging, frustumPlanes);
             }
         }
     }

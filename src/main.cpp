@@ -237,9 +237,9 @@ int main() {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, starfieldPipeline.handle());
         starfield.draw(cmd, starfieldPipeline.layout(), vp);
 
-        // Update LOD before drawing
+        // Update LOD before drawing — frustum-aware so budget goes to visible patches
         moon.update(camera.position(), camera.fovY(),
-                    static_cast<double>(swapchain.extent().height));
+                    static_cast<double>(swapchain.extent().height), vp);
 
         // Draw Moon (cubesphere handles per-chunk push constants internally)
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, terrainPipeline.handle());

@@ -37,8 +37,9 @@ public:
                    const luna::core::CommandPool& cmdPool,
                    double radius);
 
-    // Update LOD based on camera position. Call once per frame before draw().
-    void update(const glm::dvec3& cameraPos, double fovY, double screenHeight);
+    // Update LOD based on camera position and view frustum. Call once per frame before draw().
+    void update(const glm::dvec3& cameraPos, double fovY, double screenHeight,
+                const glm::mat4& viewProj);
 
     // Record draw commands for visible leaf nodes.
     void draw(VkCommandBuffer cmd, VkPipelineLayout layout,
@@ -76,7 +77,8 @@ private:
 
     void updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
                     double fovY, double screenHeight, uint32_t& splitBudget,
-                    VkCommandBuffer& cmd, luna::core::StagingBatch& staging);
+                    VkCommandBuffer& cmd, luna::core::StagingBatch& staging,
+                    const glm::vec4 frustumPlanes[6]);
 
     void drawNode(const QuadtreeNode& node, VkCommandBuffer cmd, VkPipelineLayout layout,
                   const glm::mat4& viewProj, const glm::dvec3& cameraPos,
