@@ -76,7 +76,12 @@ Development phases for building a realistic lunar landing simulator. Each phase 
 
 ## Future
 
-Features beyond the core simulation phases, in rough priority order.
+Features beyond the core simulation phases, in priority order.
+
+### Real Terrain Data
+- NASA LOLA heightmap loading (TIFF → mesh)
+- SLDEM2015 at 512 ppd (~60m resolution)
+- Specific landing sites (Tranquility Base, Shackleton crater)
 
 ### Cockpit + HUD
 - Cockpit frame geometry (Apollo LM-style window framing)
@@ -90,11 +95,6 @@ Features beyond the core simulation phases, in rough priority order.
 - Sun positioned correctly for a given mission date/time
 - Earth rendered as an illuminated disc with correct phase
 - Star catalog (Hipparcos) replacing procedural stars
-
-### Real Terrain Data
-- NASA LOLA heightmap loading (TIFF → mesh)
-- SLDEM2015 at 512 ppd (~60m resolution)
-- Specific landing sites (Tranquility Base, Shackleton crater)
 
 ### Orbital Mechanics
 - Keplerian orbit computation and visualization
