@@ -22,6 +22,13 @@ void main() {
 
     vec3 baseColor = vec3(0.6, 0.6, 0.58);
 
+    // Topographic contour lines from elevation data
+    float contourSpacing = 500.0;  // meters between contour lines
+    float hDeriv = fwidth(fragHeight);
+    float hDist = abs(fract(fragHeight / contourSpacing + 0.5) - 0.5) * contourSpacing;
+    float contour = 1.0 - smoothstep(0.0, hDeriv * 2.0, hDist);
+    baseColor = mix(baseColor, vec3(0.35, 0.30, 0.25), contour);
+
     // Lat/lon gridlines from sphere direction
     vec3 dir = normalize(fragSphereDir);
     float lat = asin(clamp(dir.y, -1.0, 1.0));

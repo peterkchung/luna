@@ -9,6 +9,8 @@ layout(push_constant) uniform PushConstants {
     vec3 cameraOffset;
     float _pad0;
     vec4 sunDirection;
+    vec3 cameraWorldPos;
+    float _pad1;
 } pc;
 
 layout(location = 0) out vec3 fragNormal;
@@ -20,5 +22,6 @@ void main() {
     gl_Position = pc.viewProj * vec4(viewPos, 1.0);
     fragNormal = inNormal;
     fragHeight = inHeight;
-    fragSphereDir = inNormal;  // sphere direction = normal on flat terrain
+    // Reconstruct world position relative to Moon center for lat/lon gridlines
+    fragSphereDir = viewPos + pc.cameraWorldPos;
 }

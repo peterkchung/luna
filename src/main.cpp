@@ -39,6 +39,8 @@ struct TerrainPushConstants {
     glm::vec3 cameraOffset;   // (chunkCenter - cameraPos), computed in doubles on CPU
     float     _pad0;
     glm::vec4 sunDirection;
+    glm::vec3 cameraWorldPos; // camera position relative to Moon center (for sphere dir)
+    float     _pad1;
 };
 
 struct StarfieldPushConstants {
@@ -48,6 +50,8 @@ struct StarfieldPushConstants {
 int main() {
     luna::util::Log::init();
     LOG_INFO("Luna starting");
+
+    luna::sim::initTerrain("assets/terrain/ldem_16.tif");
 
     VulkanContext ctx;
     glfwSetFramebufferSizeCallback(ctx.window(), framebufferResizeCallback);
@@ -173,7 +177,7 @@ int main() {
                                                  sync.imageAvailable(currentFrame),
                                                  VK_NULL_HANDLE, &imageIndex);
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-            swapchain.recreate();
+            if (!swapchain.recreate()) break;
             renderPass.recreateFramebuffers(swapchain);
             continue;
         }
@@ -225,6 +229,13 @@ int main() {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, starfieldPipeline.handle());
         starfield.draw(cmd, starfieldPipeline.layout(), vp);
 
+        // Bail early if window close arrived during this frame
+        if (glfwWindowShouldClose(ctx.window())) {
+            vkCmdEndRenderPass(cmd);
+            vkEndCommandBuffer(cmd);
+            break;
+        }
+
         // Update LOD before drawing
         moon.update(camera.position(), camera.fovY(),
                     static_cast<double>(swapchain.extent().height));
@@ -265,7 +276,7 @@ int main() {
         result = vkQueuePresentKHR(ctx.presentQueue(), &presentInfo);
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
             framebufferResized = false;
-            swapchain.recreate();
+            if (!swapchain.recreate()) break;
             renderPass.recreateFramebuffers(swapchain);
         }
 
@@ -273,6 +284,7 @@ int main() {
     }
 
     vkDeviceWaitIdle(ctx.device());
+    luna::sim::shutdownTerrain();
     LOG_INFO("Luna shutting down");
     return 0;
 }
