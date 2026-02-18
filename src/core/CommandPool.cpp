@@ -54,13 +54,20 @@ VkCommandBuffer CommandPool::beginOneShot() const {
 void CommandPool::endOneShot(VkCommandBuffer cmd, VkQueue queue) const {
     vkEndCommandBuffer(cmd);
 
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    VkFence fence;
+    vkCreateFence(device_, &fenceInfo, nullptr, &fence);
+
     VkSubmitInfo submitInfo{};
     submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers    = &cmd;
 
-    vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(queue);
+    vkQueueSubmit(queue, 1, &submitInfo, fence);
+    vkWaitForFences(device_, 1, &fence, VK_TRUE, 500'000'000);
+
+    vkDestroyFence(device_, fence, nullptr);
     vkFreeCommandBuffers(device_, pool_, 1, &cmd);
 }
 

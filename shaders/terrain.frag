@@ -22,11 +22,14 @@ void main() {
 
     vec3 baseColor = vec3(0.6, 0.6, 0.58);
 
-    // Topographic contour lines from elevation data
-    float contourSpacing = 500.0;  // meters between contour lines
+    // Topographic contour lines from elevation data.
+    // Wide smoothstep transition softens contour lines at LOD boundaries where
+    // adjacent patches interpolate heights at different resolutions.
+    float contourSpacing = 500.0;
     float hDeriv = fwidth(fragHeight);
+    float contourWidth = max(hDeriv * 3.0, contourSpacing * 0.008);
     float hDist = abs(fract(fragHeight / contourSpacing + 0.5) - 0.5) * contourSpacing;
-    float contour = 1.0 - smoothstep(0.0, hDeriv * 2.0, hDist);
+    float contour = 1.0 - smoothstep(0.0, contourWidth, hDist);
     baseColor = mix(baseColor, vec3(0.35, 0.30, 0.25), contour);
 
     vec3 color = baseColor * (ambient + diffuse);

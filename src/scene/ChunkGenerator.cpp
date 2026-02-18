@@ -112,19 +112,34 @@ ChunkMeshData ChunkGenerator::generate(int faceIndex,
     }
 
     // Skirt geometry — fills T-junction gaps between patches at different LOD levels.
-    // Each edge gets a strip of triangles hanging inward toward the Moon center.
-    // 3x multiplier ensures coverage across LOD boundaries where terrain displacement
-    // within one coarse grid cell can exceed a single cell's arc length.
+    // Each edge gets a strip hanging inward AND laterally outward from the patch
+    // boundary so adjacent patches overlap even at grazing viewing angles.
     double skirtDepth = 3.0 * (u1 - u0) * radius / static_cast<double>(gridSize - 1);
 
-    auto addSkirt = [&](uint32_t startIdx, uint32_t stride, uint32_t count, bool flip) {
+    // interiorOffset: signed step from an edge vertex to the adjacent interior vertex,
+    // used to compute the outward lateral direction for skirt extension.
+    auto addSkirt = [&](uint32_t startIdx, uint32_t stride, uint32_t count,
+                        bool flip, int interiorOffset) {
         uint32_t skirtBase = static_cast<uint32_t>(data.vertices.size());
         for (uint32_t k = 0; k < count; k++) {
             uint32_t edgeIdx = startIdx + k * stride;
             ChunkVertex sv = data.vertices[edgeIdx];
             glm::dvec3 worldPos = glm::dvec3(sv.position) + data.worldCenter;
             glm::dvec3 dir = glm::normalize(worldPos);
+
+            // Radial inward displacement
             worldPos -= dir * skirtDepth;
+
+            // Lateral outward displacement — push skirt beyond patch boundary
+            uint32_t interiorIdx = static_cast<uint32_t>(
+                static_cast<int>(edgeIdx) + interiorOffset);
+            glm::dvec3 interiorPos = glm::dvec3(data.vertices[interiorIdx].position)
+                                   + data.worldCenter;
+            glm::dvec3 outward = worldPos - interiorPos;
+            double outLen = glm::length(outward);
+            if (outLen > 0.0)
+                worldPos += (outward / outLen) * skirtDepth * 0.5;
+
             sv.position = glm::vec3(worldPos - data.worldCenter);
             data.vertices.push_back(sv);
         }
@@ -151,14 +166,14 @@ ChunkMeshData ChunkGenerator::generate(int faceIndex,
         }
     };
 
-    // Bottom edge (j=0): skirt faces away from patch interior (downward in v)
-    addSkirt(0, 1, gridSize, false);
-    // Top edge (j=gridSize-1): skirt faces away from interior (upward in v)
-    addSkirt((gridSize - 1) * gridSize, 1, gridSize, true);
-    // Left edge (i=0): skirt faces left
-    addSkirt(0, gridSize, gridSize, true);
-    // Right edge (i=gridSize-1): skirt faces right
-    addSkirt(gridSize - 1, gridSize, gridSize, false);
+    // Bottom edge (j=0): interior is one row up (+gridSize)
+    addSkirt(0, 1, gridSize, false, static_cast<int>(gridSize));
+    // Top edge (j=gridSize-1): interior is one row down (-gridSize)
+    addSkirt((gridSize - 1) * gridSize, 1, gridSize, true, -static_cast<int>(gridSize));
+    // Left edge (i=0): interior is one column right (+1)
+    addSkirt(0, gridSize, gridSize, true, 1);
+    // Right edge (i=gridSize-1): interior is one column left (-1)
+    addSkirt(gridSize - 1, gridSize, gridSize, false, -1);
 
     return data;
 }
