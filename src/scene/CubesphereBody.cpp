@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <numeric>
 
 namespace luna::scene {
 
@@ -146,18 +145,30 @@ void CubesphereBody::update(const glm::dvec3& cameraPos,
     luna::core::StagingBatch staging;
     VkCommandBuffer cmd = VK_NULL_HANDLE;
 
-    // Sort faces by distance to camera so the closest face gets budget priority
-    std::array<int, 6> faceOrder;
-    std::iota(faceOrder.begin(), faceOrder.end(), 0);
-    std::sort(faceOrder.begin(), faceOrder.end(), [&](int a, int b) {
-        double da = glm::length(roots_[a]->worldCenter - cameraPos);
-        double db = glm::length(roots_[b]->worldCenter - cameraPos);
-        return da < db;
+    // Phase 1: walk entire tree collecting leaves that want to split.
+    // Merges happen immediately during traversal since they don't compete for budget.
+    std::vector<SplitCandidate> candidates;
+    for (auto& root : roots_) {
+        collectCandidates(*root, cameraPos, fovY, screenHeight, cmd, staging, frustumPlanes, candidates);
+    }
+
+    // Phase 2: sort candidates by screen error (highest first) so the most
+    // visually important splits happen regardless of which face they're on.
+    // This eliminates depth-first budget starvation that caused the seam.
+    std::sort(candidates.begin(), candidates.end(), [](const SplitCandidate& a, const SplitCandidate& b) {
+        return a.screenError > b.screenError;
     });
 
     uint32_t splitBudget = MAX_SPLITS_PER_FRAME;
-    for (int fi : faceOrder) {
-        updateNode(*roots_[fi], cameraPos, fovY, screenHeight, splitBudget, cmd, staging, frustumPlanes);
+    for (size_t i = 0; i < candidates.size(); i++) {
+        if (splitBudget < 4) {
+            // Remaining candidates stay as leaf nodes
+            activeNodes_ += static_cast<uint32_t>(candidates.size() - i);
+            break;
+        }
+        splitNode(*candidates[i].node, cmd, staging);
+        activeNodes_ += 4;
+        splitBudget -= 4;
     }
 
     if (batchStarted_) {
@@ -168,98 +179,88 @@ void CubesphereBody::update(const glm::dvec3& cameraPos,
     deferredDestroy_.clear();
 }
 
-void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
-                                 double fovY, double screenHeight,
-                                 uint32_t& splitBudget,
-                                 VkCommandBuffer& cmd,
-                                 luna::core::StagingBatch& staging,
-                                 const glm::vec4 frustumPlanes[6]) {
+void CubesphereBody::collectCandidates(QuadtreeNode& node, const glm::dvec3& cameraPos,
+                                        double fovY, double screenHeight,
+                                        VkCommandBuffer& cmd,
+                                        luna::core::StagingBatch& staging,
+                                        const glm::vec4 frustumPlanes[6],
+                                        std::vector<SplitCandidate>& candidates) {
     double distance = glm::length(node.worldCenter - cameraPos);
-    // Avoid division by zero for camera inside the node's bounding sphere
     distance = glm::max(distance, node.boundingRadius * 0.1);
 
-    // Geometric error: approximate as the arc length of one grid cell
     double patchArc = node.boundingRadius * 2.0;
     double geometricError = patchArc / static_cast<double>(PATCH_GRID - 1);
-
-    // Project geometric error to screen pixels
     double screenError = (geometricError / distance) *
                          (screenHeight / (2.0 * std::tan(fovY * 0.5)));
 
-    // Test visibility — only spend split budget on nodes the camera can see
     glm::vec3 offset = glm::vec3(node.worldCenter - cameraPos);
     bool visible = sphereInFrustum(frustumPlanes, offset, static_cast<float>(node.boundingRadius));
 
     if (node.isLeaf()) {
-        // Only split visible nodes — off-screen nodes keep their current detail
-        if (visible && screenError > SPLIT_THRESHOLD && node.depth < MAX_DEPTH && splitBudget >= 4) {
-            double uMid = (node.u0 + node.u1) * 0.5;
-            double vMid = (node.v0 + node.v1) * 0.5;
-
-            node.children[0] = std::make_unique<QuadtreeNode>();
-            node.children[1] = std::make_unique<QuadtreeNode>();
-            node.children[2] = std::make_unique<QuadtreeNode>();
-            node.children[3] = std::make_unique<QuadtreeNode>();
-
-            initNode(*node.children[0], node.faceIndex, node.u0, uMid, node.v0, vMid, node.depth + 1);
-            initNode(*node.children[1], node.faceIndex, uMid, node.u1, node.v0, vMid, node.depth + 1);
-            initNode(*node.children[2], node.faceIndex, node.u0, uMid, vMid, node.v1, node.depth + 1);
-            initNode(*node.children[3], node.faceIndex, uMid, node.u1, vMid, node.v1, node.depth + 1);
-
-            for (auto& child : node.children) {
-                generateMeshBatched(*child, cmd, staging);
-            }
-            splitBudget -= 4;
-
-            if (node.mesh)
-                deferredDestroy_.push_back(std::move(node.mesh));
+        if (visible && screenError > SPLIT_THRESHOLD && node.depth < MAX_DEPTH) {
+            candidates.push_back({&node, screenError});
         } else {
             activeNodes_++;
         }
-    } else {
-        // Interior node — check if we should merge children back
-        bool allChildrenLeaves = true;
-        double maxChildError = 0.0;
+        return;
+    }
+
+    // Interior node — check if we should merge children back
+    bool allChildrenLeaves = true;
+    double maxChildError = 0.0;
+    for (auto& child : node.children) {
+        if (!child || !child->isLeaf()) {
+            allChildrenLeaves = false;
+            break;
+        }
+        double childDist = glm::length(child->worldCenter - cameraPos);
+        childDist = glm::max(childDist, child->boundingRadius * 0.1);
+        double childArc = child->boundingRadius * 2.0;
+        double childGeoError = childArc / static_cast<double>(PATCH_GRID - 1);
+        double childScreenError = (childGeoError / childDist) *
+                                  (screenHeight / (2.0 * std::tan(fovY * 0.5)));
+        maxChildError = glm::max(maxChildError, childScreenError);
+    }
+
+    if (allChildrenLeaves && maxChildError < MERGE_THRESHOLD) {
+        if (!node.hasMesh()) {
+            generateMeshBatched(node, cmd, staging);
+        }
         for (auto& child : node.children) {
-            if (!child || !child->isLeaf()) {
-                allChildrenLeaves = false;
-                break;
-            }
-            double childDist = glm::length(child->worldCenter - cameraPos);
-            childDist = glm::max(childDist, child->boundingRadius * 0.1);
-            double childArc = child->boundingRadius * 2.0;
-            double childGeoError = childArc / static_cast<double>(PATCH_GRID - 1);
-            double childScreenError = (childGeoError / childDist) *
-                                      (screenHeight / (2.0 * std::tan(fovY * 0.5)));
-            maxChildError = glm::max(maxChildError, childScreenError);
+            if (child && child->mesh)
+                deferredDestroy_.push_back(std::move(child->mesh));
+            child.reset();
         }
-
-        if (allChildrenLeaves && maxChildError < MERGE_THRESHOLD) {
-            // Merge: regenerate parent mesh, defer child destruction
-            if (!node.hasMesh()) {
-                generateMeshBatched(node, cmd, staging);
-            }
-            for (auto& child : node.children) {
-                if (child && child->mesh)
-                    deferredDestroy_.push_back(std::move(child->mesh));
-                child.reset();
-            }
-            activeNodes_++;
-        } else {
-            // Sort children by distance to camera for balanced recursion
-            std::array<int, 4> childOrder = {0, 1, 2, 3};
-            std::sort(childOrder.begin(), childOrder.end(), [&](int a, int b) {
-                if (!node.children[a]) return false;
-                if (!node.children[b]) return true;
-                return glm::length(node.children[a]->worldCenter - cameraPos) <
-                       glm::length(node.children[b]->worldCenter - cameraPos);
-            });
-            for (int ci : childOrder) {
-                if (node.children[ci])
-                    updateNode(*node.children[ci], cameraPos, fovY, screenHeight, splitBudget, cmd, staging, frustumPlanes);
-            }
+        activeNodes_++;
+    } else {
+        for (auto& child : node.children) {
+            if (child)
+                collectCandidates(*child, cameraPos, fovY, screenHeight, cmd, staging, frustumPlanes, candidates);
         }
     }
+}
+
+void CubesphereBody::splitNode(QuadtreeNode& node, VkCommandBuffer& cmd,
+                                luna::core::StagingBatch& staging) {
+    double uMid = (node.u0 + node.u1) * 0.5;
+    double vMid = (node.v0 + node.v1) * 0.5;
+
+    node.children[0] = std::make_unique<QuadtreeNode>();
+    node.children[1] = std::make_unique<QuadtreeNode>();
+    node.children[2] = std::make_unique<QuadtreeNode>();
+    node.children[3] = std::make_unique<QuadtreeNode>();
+
+    initNode(*node.children[0], node.faceIndex, node.u0, uMid, node.v0, vMid, node.depth + 1);
+    initNode(*node.children[1], node.faceIndex, uMid, node.u1, node.v0, vMid, node.depth + 1);
+    initNode(*node.children[2], node.faceIndex, node.u0, uMid, vMid, node.v1, node.depth + 1);
+    initNode(*node.children[3], node.faceIndex, uMid, node.u1, vMid, node.v1, node.depth + 1);
+
+    for (auto& child : node.children) {
+        generateMeshBatched(*child, cmd, staging);
+    }
+
+    if (node.mesh)
+        deferredDestroy_.push_back(std::move(node.mesh));
 }
 
 void CubesphereBody::extractFrustumPlanes(const glm::mat4& vp, glm::vec4 planes[6]) {

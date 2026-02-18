@@ -6,6 +6,7 @@
 #include "util/Math.h"
 #include <array>
 #include <memory>
+#include <vector>
 #include <vulkan/vulkan.h>
 
 namespace luna::core {
@@ -75,10 +76,21 @@ private:
     void generateMeshBatched(QuadtreeNode& node, VkCommandBuffer& cmd,
                              luna::core::StagingBatch& staging);
 
-    void updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
-                    double fovY, double screenHeight, uint32_t& splitBudget,
-                    VkCommandBuffer& cmd, luna::core::StagingBatch& staging,
-                    const glm::vec4 frustumPlanes[6]);
+    struct SplitCandidate {
+        QuadtreeNode* node;
+        double screenError;
+    };
+
+    // Phase 1: walk tree collecting leaves that want to split; perform merges immediately
+    void collectCandidates(QuadtreeNode& node, const glm::dvec3& cameraPos,
+                           double fovY, double screenHeight,
+                           VkCommandBuffer& cmd, luna::core::StagingBatch& staging,
+                           const glm::vec4 frustumPlanes[6],
+                           std::vector<SplitCandidate>& candidates);
+
+    // Phase 2: split a single leaf into 4 children with mesh generation
+    void splitNode(QuadtreeNode& node, VkCommandBuffer& cmd,
+                   luna::core::StagingBatch& staging);
 
     void drawNode(const QuadtreeNode& node, VkCommandBuffer cmd, VkPipelineLayout layout,
                   const glm::mat4& viewProj, const glm::dvec3& cameraPos,
