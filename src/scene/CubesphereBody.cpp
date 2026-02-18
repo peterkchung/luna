@@ -212,9 +212,14 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
             if (node.mesh)
                 deferredDestroy_.push_back(std::move(node.mesh));
 
-            // Recurse into children for further splitting
-            for (auto& child : node.children) {
-                updateNode(*child, cameraPos, fovY, screenHeight, splitBudget, cmd, staging, frustumPlanes);
+            // Sort children by distance to camera so closest gets budget first
+            std::array<int, 4> childOrder = {0, 1, 2, 3};
+            std::sort(childOrder.begin(), childOrder.end(), [&](int a, int b) {
+                return glm::length(node.children[a]->worldCenter - cameraPos) <
+                       glm::length(node.children[b]->worldCenter - cameraPos);
+            });
+            for (int ci : childOrder) {
+                updateNode(*node.children[ci], cameraPos, fovY, screenHeight, splitBudget, cmd, staging, frustumPlanes);
             }
         } else {
             activeNodes_++;
@@ -249,9 +254,17 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
             }
             activeNodes_++;
         } else {
-            // Recurse into children
-            for (auto& child : node.children) {
-                if (child) updateNode(*child, cameraPos, fovY, screenHeight, splitBudget, cmd, staging, frustumPlanes);
+            // Sort children by distance to camera for balanced recursion
+            std::array<int, 4> childOrder = {0, 1, 2, 3};
+            std::sort(childOrder.begin(), childOrder.end(), [&](int a, int b) {
+                if (!node.children[a]) return false;
+                if (!node.children[b]) return true;
+                return glm::length(node.children[a]->worldCenter - cameraPos) <
+                       glm::length(node.children[b]->worldCenter - cameraPos);
+            });
+            for (int ci : childOrder) {
+                if (node.children[ci])
+                    updateNode(*node.children[ci], cameraPos, fovY, screenHeight, splitBudget, cmd, staging, frustumPlanes);
             }
         }
     }
