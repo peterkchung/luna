@@ -124,6 +124,10 @@ int main() {
 
     while (!glfwWindowShouldClose(ctx.window())) {
         glfwPollEvents();
+
+        // Exit immediately after processing close event — before any blocking Vulkan calls
+        if (glfwWindowShouldClose(ctx.window())) break;
+
         input.update();
 
         double now = glfwGetTime();
@@ -169,11 +173,14 @@ int main() {
                          static_cast<double>(swapchain.extent().height));
         cameraController.update(camera, input, dt);
 
+        // Wait for previous frame's GPU work with timeout so we stay responsive
         VkFence fence = sync.inFlight(currentFrame);
-        vkWaitForFences(ctx.device(), 1, &fence, VK_TRUE, UINT64_MAX);
+        constexpr uint64_t FENCE_TIMEOUT = 1'000'000'000; // 1 second
+        VkResult fenceResult = vkWaitForFences(ctx.device(), 1, &fence, VK_TRUE, FENCE_TIMEOUT);
+        if (fenceResult == VK_TIMEOUT) continue; // retry next iteration
 
         uint32_t imageIndex;
-        VkResult result = vkAcquireNextImageKHR(ctx.device(), swapchain.handle(), UINT64_MAX,
+        VkResult result = vkAcquireNextImageKHR(ctx.device(), swapchain.handle(), FENCE_TIMEOUT,
                                                  sync.imageAvailable(currentFrame),
                                                  VK_NULL_HANDLE, &imageIndex);
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
@@ -181,6 +188,7 @@ int main() {
             renderPass.recreateFramebuffers(swapchain);
             continue;
         }
+        if (result == VK_TIMEOUT || result == VK_NOT_READY) continue;
 
         vkResetFences(ctx.device(), 1, &fence);
 
@@ -228,13 +236,6 @@ int main() {
         // Draw starfield first (behind everything, no depth write)
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, starfieldPipeline.handle());
         starfield.draw(cmd, starfieldPipeline.layout(), vp);
-
-        // Bail early if window close arrived during this frame
-        if (glfwWindowShouldClose(ctx.window())) {
-            vkCmdEndRenderPass(cmd);
-            vkEndCommandBuffer(cmd);
-            break;
-        }
 
         // Update LOD before drawing
         moon.update(camera.position(), camera.fovY(),
