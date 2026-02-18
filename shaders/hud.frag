@@ -53,7 +53,6 @@ float renderDigit(vec2 p, int d) {
     return r;
 }
 
-// Render a minus sign (just the middle segment)
 float renderMinus(vec2 p) {
     float t = 0.15;
     float m = 0.08;
@@ -62,7 +61,6 @@ float renderMinus(vec2 p) {
     return 0.0;
 }
 
-// Render dim "ghost" segments (all 7 segments at low intensity)
 float renderGhost(vec2 p) {
     return renderDigit(p, 8) * 0.1;
 }
@@ -108,19 +106,16 @@ float renderBar(vec2 uv, float fill) {
     float border = 0.06;
     float inner = 0.2;
 
-    // Outline
     float outline = 0.0;
     if (uv.x < border || uv.x > (1.0 - border) ||
         uv.y < border || uv.y > (1.0 - border))
         outline = 0.4;
 
-    // Fill region
     float barFill = 0.0;
     if (uv.x > inner && uv.x < (1.0 - inner) &&
         uv.y > border * 2.0 && uv.y < fill)
         barFill = 1.0;
 
-    // Tick marks at 25%, 50%, 75%
     float ticks = 0.0;
     for (int i = 1; i <= 3; i++) {
         float tickY = float(i) * 0.25;
@@ -131,41 +126,124 @@ float renderBar(vec2 uv, float fill) {
     return max(max(outline, barFill), ticks);
 }
 
+// 3x5 bitmap font — each character encoded as 15 bits (row 0 = top, 3 pixels per row)
+// Bit layout: row0[2,1,0] row1[2,1,0] row2[2,1,0] row3[2,1,0] row4[2,1,0]
+const int CHAR_A = 0x2BED; // .#. #.# ### #.# #.#
+const int CHAR_D = 0x6B6E; // ##. #.# #.# #.# ##.
+const int CHAR_E = 0x79A7; // ### #.. ##. #.. ###
+const int CHAR_F = 0x79A4; // ### #.. ##. #.. #..
+const int CHAR_H = 0x5BED; // #.# #.# ### #.# #.#
+const int CHAR_L = 0x4927; // #.. #.. #.. #.. ###
+const int CHAR_P = 0x6BA4; // ##. #.# ##. #.. #..
+const int CHAR_R = 0x6BAD; // ##. #.# ##. #.# #.#
+const int CHAR_S = 0x388E; // .## #.. .#. ..# ##.
+const int CHAR_T = 0x7492; // ### .#. .#. .#. .#.
+const int CHAR_U = 0x5B6F; // #.# #.# #.# #.# ###
+const int CHAR_V = 0x5B52; // #.# #.# #.# .#. .#.
+
+float renderBitmapChar(vec2 p, int bitmap) {
+    if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) return 0.0;
+
+    int col = int(p.x * 3.0);
+    int row = int((1.0 - p.y) * 5.0);
+    col = clamp(col, 0, 2);
+    row = clamp(row, 0, 4);
+
+    int bitIndex = (4 - row) * 3 + (2 - col);
+    return ((bitmap >> bitIndex) & 1) != 0 ? 1.0 : 0.0;
+}
+
+float renderLabel(vec2 uv, int chars[4], int numChars) {
+    float charW = 0.8;
+    float gap = 0.3;
+    float cellW = charW + gap;
+    float totalW = float(numChars) * cellW - gap;
+
+    // Center the label
+    float startX = (1.0 - totalW / (totalW + 0.5)) * 0.5;
+    float scaledX = (uv.x - startX) / (1.0 - 2.0 * startX);
+
+    float cellX = scaledX * float(numChars);
+    int idx = int(floor(cellX));
+    if (idx < 0 || idx >= numChars) return 0.0;
+
+    float localX = fract(cellX) * (cellW / charW);
+    if (localX > 1.0) return 0.0;
+
+    return renderBitmapChar(vec2(localX, uv.y), chars[idx]);
+}
+
 void main() {
     int id = int(fragInstrumentId + 0.5);
     float bgAlpha = 0.3;
     vec4 color = vec4(0.0, 0.0, 0.0, bgAlpha);
 
+    // Split UV: top 25% = label, bottom 75% = instrument
+    float labelSplit = 0.75;
+    bool inLabel = fragUV.y > labelSplit;
+    vec2 instrUV = vec2(fragUV.x, fragUV.y / labelSplit);
+    vec2 labelUV = vec2(fragUV.x, (fragUV.y - labelSplit) / (1.0 - labelSplit));
+
     if (id == 0) {
-        // Altitude: green
-        float lit = renderNumber(fragUV, pc.altitude, 7, false);
+        // Altitude: green, label "ALT"
         vec3 c = vec3(0.0, 1.0, 0.3);
+        float lit;
+        if (inLabel) {
+            int chars[4] = int[4](CHAR_A, CHAR_L, CHAR_T, 0);
+            lit = renderLabel(labelUV, chars, 3) * 0.6;
+        } else {
+            lit = renderNumber(instrUV, pc.altitude, 7, false);
+        }
         color = vec4(c * lit, bgAlpha + lit * 0.7);
     }
     else if (id == 1) {
-        // Vertical speed: cyan
-        float lit = renderNumber(fragUV, pc.verticalSpeed, 6, true);
+        // Vertical speed: cyan, label "VSPD"
         vec3 c = vec3(0.0, 0.9, 1.0);
+        float lit;
+        if (inLabel) {
+            int chars[4] = int[4](CHAR_V, CHAR_S, CHAR_P, CHAR_D);
+            lit = renderLabel(labelUV, chars, 4) * 0.6;
+        } else {
+            lit = renderNumber(instrUV, pc.verticalSpeed, 6, true);
+        }
         color = vec4(c * lit, bgAlpha + lit * 0.7);
     }
     else if (id == 2) {
-        // Surface speed: yellow
-        float lit = renderNumber(fragUV, pc.surfaceSpeed, 5, false);
+        // Surface speed: yellow, label "HSPD"
         vec3 c = vec3(1.0, 0.9, 0.1);
+        float lit;
+        if (inLabel) {
+            int chars[4] = int[4](CHAR_H, CHAR_S, CHAR_P, CHAR_D);
+            lit = renderLabel(labelUV, chars, 4) * 0.6;
+        } else {
+            lit = renderNumber(instrUV, pc.surfaceSpeed, 5, false);
+        }
         color = vec4(c * lit, bgAlpha + lit * 0.7);
     }
     else if (id == 3) {
-        // Throttle bar: orange
-        float lit = renderBar(fragUV, pc.throttle);
+        // Throttle bar: orange, label "THR"
         vec3 c = vec3(1.0, 0.5, 0.0);
+        float lit;
+        if (inLabel) {
+            int chars[4] = int[4](CHAR_T, CHAR_H, CHAR_R, 0);
+            lit = renderLabel(labelUV, chars, 3) * 0.6;
+        } else {
+            lit = renderBar(instrUV, pc.throttle);
+        }
         color = vec4(c * lit, bgAlpha + lit * 0.7);
     }
     else if (id == 4) {
-        // Fuel bar: green-to-red gradient
-        float lit = renderBar(fragUV, pc.fuelFraction);
+        // Fuel bar: green-to-red gradient, label "FUEL"
         vec3 fullColor = vec3(0.0, 1.0, 0.3);
         vec3 emptyColor = vec3(1.0, 0.2, 0.0);
         vec3 c = mix(emptyColor, fullColor, pc.fuelFraction);
+        float lit;
+        if (inLabel) {
+            int chars[4] = int[4](CHAR_F, CHAR_U, CHAR_E, CHAR_L);
+            lit = renderLabel(labelUV, chars, 4) * 0.6;
+        } else {
+            lit = renderBar(instrUV, pc.fuelFraction);
+        }
         color = vec4(c * lit, bgAlpha + lit * 0.7);
     }
 

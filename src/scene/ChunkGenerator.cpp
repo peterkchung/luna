@@ -113,7 +113,9 @@ ChunkMeshData ChunkGenerator::generate(int faceIndex,
 
     // Skirt geometry — fills T-junction gaps between patches at different LOD levels.
     // Each edge gets a strip of triangles hanging inward toward the Moon center.
-    double skirtDepth = (u1 - u0) * radius / static_cast<double>(gridSize - 1);
+    // 3x multiplier ensures coverage across LOD boundaries where terrain displacement
+    // within one coarse grid cell can exceed a single cell's arc length.
+    double skirtDepth = 3.0 * (u1 - u0) * radius / static_cast<double>(gridSize - 1);
 
     auto addSkirt = [&](uint32_t startIdx, uint32_t stride, uint32_t count, bool flip) {
         uint32_t skirtBase = static_cast<uint32_t>(data.vertices.size());

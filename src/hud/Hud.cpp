@@ -26,20 +26,20 @@ Hud::Hud(const luna::core::VulkanContext& ctx,
     std::vector<HudVertex> vertices;
     std::vector<uint32_t> indices;
 
-    // Altitude — bottom-left, 7 digits
-    addQuad(vertices, indices, 0.02f, 0.06f, 0.22f, 0.05f, 0.0f);
+    // Altitude — bottom-left, 7 digits + label
+    addQuad(vertices, indices, 0.02f, 0.06f, 0.22f, 0.07f, 0.0f);
 
-    // Vertical speed — below altitude, sign + 5 digits
-    addQuad(vertices, indices, 0.02f, 0.01f, 0.18f, 0.04f, 1.0f);
+    // Vertical speed — below altitude, sign + 5 digits + label
+    addQuad(vertices, indices, 0.02f, 0.00f, 0.18f, 0.06f, 1.0f);
 
-    // Surface speed — bottom-right, 5 digits
-    addQuad(vertices, indices, 0.80f, 0.01f, 0.18f, 0.04f, 2.0f);
+    // Surface speed — bottom-right, 5 digits + label
+    addQuad(vertices, indices, 0.80f, 0.00f, 0.18f, 0.06f, 2.0f);
 
-    // Throttle bar — bottom-center-left, vertical
-    addQuad(vertices, indices, 0.44f, 0.01f, 0.04f, 0.12f, 3.0f);
+    // Throttle bar — bottom-center-left, vertical + label
+    addQuad(vertices, indices, 0.44f, 0.00f, 0.04f, 0.15f, 3.0f);
 
-    // Fuel bar — bottom-center-right, vertical
-    addQuad(vertices, indices, 0.52f, 0.01f, 0.04f, 0.12f, 4.0f);
+    // Fuel bar — bottom-center-right, vertical + label
+    addQuad(vertices, indices, 0.52f, 0.00f, 0.04f, 0.15f, 4.0f);
 
     mesh_ = luna::scene::Mesh(ctx, cmdPool,
                                vertices.data(),

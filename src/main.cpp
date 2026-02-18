@@ -188,7 +188,7 @@ int main() {
 
         // Wait for previous frame's GPU work with timeout so we stay responsive
         VkFence fence = sync.inFlight(currentFrame);
-        constexpr uint64_t FENCE_TIMEOUT = 1'000'000'000; // 1 second
+        constexpr uint64_t FENCE_TIMEOUT = 100'000'000; // 100ms — keeps loop responsive to close events
         VkResult fenceResult = vkWaitForFences(ctx.device(), 1, &fence, VK_TRUE, FENCE_TIMEOUT);
         if (fenceResult == VK_TIMEOUT) continue; // retry next iteration
 
