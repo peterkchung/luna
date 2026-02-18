@@ -208,19 +208,8 @@ void CubesphereBody::updateNode(QuadtreeNode& node, const glm::dvec3& cameraPos,
             }
             splitBudget -= 4;
 
-            // Defer parent mesh destruction until after batch submit
             if (node.mesh)
                 deferredDestroy_.push_back(std::move(node.mesh));
-
-            // Sort children by distance to camera so closest gets budget first
-            std::array<int, 4> childOrder = {0, 1, 2, 3};
-            std::sort(childOrder.begin(), childOrder.end(), [&](int a, int b) {
-                return glm::length(node.children[a]->worldCenter - cameraPos) <
-                       glm::length(node.children[b]->worldCenter - cameraPos);
-            });
-            for (int ci : childOrder) {
-                updateNode(*node.children[ci], cameraPos, fovY, screenHeight, splitBudget, cmd, staging, frustumPlanes);
-            }
         } else {
             activeNodes_++;
         }
