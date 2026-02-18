@@ -363,6 +363,12 @@ int main() {
   }
 
   vkDeviceWaitIdle(ctx.device());
+
+  // Release GPU handles without individual Vulkan destroy calls — the hundreds
+  // of per-node vkDestroyBuffer/vkFreeMemory calls are the shutdown bottleneck.
+  // vkDestroyDevice handles bulk cleanup.
+  moon.releaseGPU();
+
   luna::sim::shutdownTerrain();
   LOG_INFO("Luna shutting down");
   return 0;

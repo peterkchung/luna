@@ -172,4 +172,10 @@ void Buffer::unmap() {
     vkUnmapMemory(device_, memory_);
 }
 
+void Buffer::release() {
+    buffer_ = VK_NULL_HANDLE;
+    memory_ = VK_NULL_HANDLE;
+    size_   = 0;
+}
+
 } // namespace luna::core

@@ -41,4 +41,9 @@ void Mesh::draw(VkCommandBuffer cmd) const {
     vkCmdDrawIndexed(cmd, indexCount_, 1, 0, 0, 0);
 }
 
+void Mesh::release() {
+    vertexBuffer_.release();
+    indexBuffer_.release();
+}
+
 } // namespace luna::scene

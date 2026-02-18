@@ -43,6 +43,10 @@ public:
     void* map();
     void  unmap();
 
+    // Relinquish ownership without Vulkan destroy calls — for bulk shutdown
+    // where vkDestroyDevice handles cleanup.
+    void release();
+
 private:
     static Buffer createRaw(VkDevice device, VkPhysicalDevice physDevice,
                             VkDeviceSize size, VkBufferUsageFlags usage,

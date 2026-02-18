@@ -50,6 +50,10 @@ public:
 
     uint32_t activeNodeCount() const { return activeNodes_; }
 
+    // Release all GPU handles without individual Vulkan destroy calls.
+    // Call after vkDeviceWaitIdle — vkDestroyDevice handles actual cleanup.
+    void releaseGPU();
+
 private:
     static constexpr uint32_t MAX_DEPTH            = 15;
     static constexpr uint32_t PATCH_GRID           = 17;

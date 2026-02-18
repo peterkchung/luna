@@ -27,6 +27,7 @@ public:
          luna::core::StagingBatch& staging);
 
     void draw(VkCommandBuffer cmd) const;
+    void release();
 
     uint32_t indexCount() const { return indexCount_; }
 

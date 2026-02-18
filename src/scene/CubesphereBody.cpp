@@ -335,4 +335,20 @@ void CubesphereBody::drawNode(const QuadtreeNode& node, VkCommandBuffer cmd,
     }
 }
 
+namespace {
+void releaseNodeGPU(QuadtreeNode* node) {
+    if (!node) return;
+    if (node->mesh) node->mesh->release();
+    for (auto& child : node->children)
+        releaseNodeGPU(child.get());
+}
+} // anonymous namespace
+
+void CubesphereBody::releaseGPU() {
+    for (auto& root : roots_)
+        releaseNodeGPU(root.get());
+    for (auto& m : deferredDestroy_)
+        if (m) m->release();
+}
+
 } // namespace luna::scene
