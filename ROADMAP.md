@@ -36,7 +36,7 @@ Development phases for building a realistic lunar landing simulator. Each phase 
 - [x] Implement `ChunkGenerator` — produces vertex/index data per patch
 - [x] Implement `CubesphereBody` — manages 6 faces, each subdivided into patches
 - [x] Store vertex positions relative to patch center (chunk-local coordinates)
-- [x] Apply procedural heightmap displacement on the sphere surface
+- [x] ~~Apply procedural heightmap displacement on the sphere surface~~ (removed — flat terrain placeholder until NASA LOLA data)
 - [x] Replace flat `Terrain` with `CubesphereBody` in main loop
 - [x] Start camera at 100km altitude
 
@@ -46,7 +46,9 @@ Development phases for building a realistic lunar landing simulator. Each phase 
 - [x] Skirt geometry to fill T-junction gaps between LOD levels
 - [x] Frustum culling (Gribb/Hartmann plane extraction, bounding sphere test)
 - [x] Conservative bounding radius from corner/edge midpoint sampling
-- [x] Mesh upload budget (max 64 splits per frame for fast convergence)
+- [x] Mesh upload budget (max 32 splits per frame)
+- [x] Batched GPU uploads via shared staging buffer (StagingBatch)
+- [x] Deferred mesh destruction to prevent use-after-free during batched transfers
 
 ### Phase D — Physics Simulation
 - [x] Implement `SimState` — position, velocity, orientation, fuel, flight phase

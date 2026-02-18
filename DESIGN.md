@@ -129,9 +129,19 @@ auto pipeline = Pipeline::Builder(context, renderPass)
 
 **Buffer** distinguishes between static and dynamic at creation time:
 ```cpp
-auto terrainBuf = Buffer::createStatic(ctx, cmdPool, usage, data, size); // GPU-local, staged
+auto terrainBuf = Buffer::createStatic(ctx, cmdPool, usage, data, size); // GPU-local, staged, blocking
 auto particleBuf = Buffer::createDynamic(ctx, usage, size);              // host-visible, mappable
 ```
+
+**StagingBatch** is a bump allocator over a single host-visible buffer, used to batch multiple GPU uploads into one command buffer submission. This avoids per-mesh `vkQueueWaitIdle` stalls during LOD splits:
+```cpp
+StagingBatch staging;
+staging.begin(ctx, totalBytes);           // allocate + map one staging buffer
+auto buf = Buffer::createStaticBatch(ctx, cmd, usage, data, size, staging); // suballocate + record copy
+staging.end();                            // unmap
+cmdPool.endOneShot(cmd, queue);           // submit all copies at once
+```
+Meshes replaced during batched uploads are deferred in `deferredDestroy_` until after the transfer command buffer completes, preventing use-after-free on VRAM buffers still referenced by in-flight copy commands.
 
 ### scene/ — Renderable Objects
 
@@ -143,16 +153,16 @@ The cubesphere pipeline:
 1. 6 cube faces, each the root of a quadtree
 2. Each quadtree node covers a UV region on its face
 3. Node UV coordinates are projected onto the unit sphere, then scaled to `LUNAR_RADIUS`
-4. Procedural heightmap displacement is applied (later: NASA LOLA data)
+4. Terrain is currently flat (NASA LOLA heightmap data planned)
 5. Vertex positions are stored **relative to the patch center** (preserves float precision)
 6. LOD selection: nodes split/merge based on screen-space geometric error
 7. Skirt geometry fills T-junction gaps between LOD levels
 
 **ChunkGenerator** produces vertex/index data for a single quadtree patch:
 - Projects cube-face UV grid onto sphere surface
-- Applies heightmap displacement
-- Computes normals via central differencing
+- Normals are the sphere direction (flat terrain, no heightmap displacement yet)
 - Stores positions relative to patch center (`dvec3` center, `vec3` local offsets)
+- Generates skirt geometry on all 4 edges to fill T-junction gaps
 
 **Starfield** renders ~5,000 procedural stars as point sprites. Positions are unit direction vectors on a conceptual sphere. Rendered before terrain with depth write OFF.
 
@@ -192,7 +202,7 @@ struct SimState {
 
 Why double precision? At orbital altitude (~100km), Moon-centered coordinates are ~1,837,400m. A 32-bit float gives ~0.1m resolution — acceptable for position, but velocity integration accumulates rounding error over minutes. Doubles give ~15 digits of precision, eliminating drift. Downcast to float only at the sim-to-render boundary.
 
-**TerrainQuery** provides heightmap sampling as a pure function, shared by both mesh generation (scene/) and collision detection (sim/). Extracts the noise functions from the legacy Terrain class.
+**TerrainQuery** provides heightmap sampling as a pure function, shared by both mesh generation (scene/) and collision detection (sim/). Currently returns 0 (flat terrain) — will be replaced with NASA LOLA data loading.
 
 ### camera/ — View System
 
@@ -296,19 +306,19 @@ geometricError = nodeArcLength / gridResolution
 distance = length(nodeCenter - cameraPosition)     // double precision
 screenError = geometricError / distance * screenFactor
 
-Split when screenError > 2.0 pixels
-Merge when all children < 1.0 pixels
+Split when screenError > 4.0 pixels
+Merge when all children < 2.0 pixels
 ```
 
-| Depth | Patches/face | Patch edge length | Vertex spacing (33x33) |
+| Depth | Patches/face | Patch edge length | Vertex spacing (17x17) |
 |-------|-------------|-------------------|----------------------|
-| 0     | 1           | ~2,730 km         | ~85 km               |
-| 4     | 256         | ~170 km           | ~5.3 km              |
-| 8     | 65,536      | ~10.7 km          | ~334 m               |
-| 12    | 16.7M       | ~670 m            | ~21 m                |
-| 15    | 1.07B       | ~83 m             | ~2.6 m               |
+| 0     | 1           | ~2,730 km         | ~170 km              |
+| 4     | 256         | ~170 km           | ~10.7 km             |
+| 8     | 65,536      | ~10.7 km          | ~668 m               |
+| 12    | 16.7M       | ~670 m            | ~42 m                |
+| 15    | 1.07B       | ~83 m             | ~5.2 m               |
 
-In practice, only ~50–200 patches are active at any time (deep only near camera). At 33x33 vertices (2,048 triangles per patch), 200 patches = ~410k triangles.
+In practice, only ~50–200 patches are active at any time (deep only near camera). At 17x17 vertices (512 triangles per patch + skirts), 200 patches = ~120k triangles.
 
 ### Skirt Geometry
 
@@ -330,7 +340,7 @@ struct ChunkVertex {
 
 ### Lunar Terrain — NASA LOLA
 
-Currently using procedural noise (layered Perlin + crater depressions). Future data source:
+Currently flat (procedural noise removed). Planned data source:
 
 **Source:** CGI Moon Kit (https://svs.gsfc.nasa.gov/4720/)
 - Displacement maps at 64, 16, and 4 pixels per degree

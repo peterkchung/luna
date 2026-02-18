@@ -16,8 +16,9 @@ Luna aims to answer this through geometric and physical fidelity: a spherical Mo
 - Skirt geometry to fill T-junction gaps between LOD levels
 - Camera-relative rendering (double-precision offsets, no jitter at Moon scale)
 - Frustum culling (Gribb/Hartmann plane extraction, bounding sphere test)
-- Procedural terrain with layered noise and crater depressions
-- Directional sun lighting with height-based surface coloring
+- Flat terrain placeholder (procedural noise removed, NASA LOLA data planned)
+- Directional sun lighting with lat/lon gridlines for visual reference
+- Batched GPU uploads via shared staging buffer (StagingBatch)
 - Quaternion camera with radial-up mouse look and altitude-scaled movement
 - Procedural starfield (~5,000 point sprites)
 - 6DOF rigid body physics (lunar gravity, thrust, fuel consumption, collision)

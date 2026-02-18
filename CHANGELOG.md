@@ -4,6 +4,34 @@ All notable changes to Luna are documented here, grouped by development phase.
 
 ---
 
+## Performance + Visual Refinement
+
+### 437df82 — style: brighten terrain and add lat/lon gridlines
+- Increase base terrain color from dark gray to lighter gray (vec3(0.6))
+- Raise ambient lighting from 0.05 to 0.12
+- Add 10-degree lat/lon grid lines via sphere direction in fragment shader
+- Pass sphere direction as varying from vertex shader for stable fwidth derivatives
+
+### 7027dbb — perf: batch GPU uploads with shared staging buffer and deferred mesh destruction
+- Add StagingBatch bump allocator: single host-visible buffer for all staging copies in a batch
+- Update Buffer::createStaticBatch to suballocate from StagingBatch instead of per-call vkAllocateMemory
+- Update Mesh batched constructor to use StagingBatch
+- CubesphereBody constructor and update() now batch all transfers into one command buffer submission
+- Defer mesh destruction during LOD splits/merges to prevent use-after-free on VRAM buffers still referenced by in-flight transfer commands
+
+### 33471e8 — revert: remove batched uploads to isolate GPUVM fault cause
+
+### 003c451 — revert: remove octahedron vertex encoding causing GPUVM fault on RADV
+
+### 0215f98 — perf: tune LOD constants — smaller patches, less aggressive splitting
+- PATCH_GRID: 33 → 17, SPLIT_THRESHOLD: 2.0 → 4.0, MERGE_THRESHOLD: 1.0 → 2.0, MAX_SPLITS_PER_FRAME: 64 → 32
+
+### 5c5f553 — perf: flatten terrain, remove procedural noise and central differencing
+- TerrainQuery::sampleTerrainHeight returns 0 (flat terrain placeholder for NASA LOLA data)
+- ChunkGenerator uses sphere normals directly, removes central differencing and heightmap sampling
+
+---
+
 ## Phase E — Camera Overhaul + Starfield
 
 ### c974720 — fix: camera on -Y axis, skirt geometry, faster LOD convergence
