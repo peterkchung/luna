@@ -29,27 +29,6 @@ void main() {
     float contour = 1.0 - smoothstep(0.0, hDeriv * 2.0, hDist);
     baseColor = mix(baseColor, vec3(0.35, 0.30, 0.25), contour);
 
-    // Lat/lon gridlines from sphere direction
-    vec3 dir = normalize(fragSphereDir);
-    float lat = asin(clamp(dir.y, -1.0, 1.0));
-    float lon = atan(dir.z, dir.x);
-
-    // Grid every 10 degrees
-    float spacing = radians(10.0);
-
-    // Use fwidth on the raw dir components for stable derivatives
-    float latDeriv = fwidth(lat);
-    float lonDeriv = fwidth(lon);
-
-    float latDist = abs(fract(lat / spacing + 0.5) - 0.5) * spacing;
-    float lonDist = abs(fract(lon / spacing + 0.5) - 0.5) * spacing;
-
-    float latLine = 1.0 - smoothstep(0.0, latDeriv * 2.0, latDist);
-    float lonLine = 1.0 - smoothstep(0.0, lonDeriv * 2.0, lonDist);
-    float grid = max(latLine, lonLine);
-
-    vec3 gridColor = mix(baseColor, vec3(0.85, 0.85, 0.9), grid);
-
-    vec3 color = gridColor * (ambient + diffuse);
+    vec3 color = baseColor * (ambient + diffuse);
     outColor = vec4(color, 1.0);
 }
