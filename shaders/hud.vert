@@ -11,8 +11,20 @@ layout(push_constant) uniform PushConstants {
     float throttle;
     float fuelFraction;
     float aspectRatio;
+    float pitch;
+    float roll;
+    float heading;
+    float timeToSurface;
+    float progradeX;
+    float progradeY;
+    float flightPhase;
+    float missionTime;
+    float warningFlags;
+    float progradeVisible;
+    float tiltAngle;
     float _pad0;
     float _pad1;
+    float _pad2;
 } pc;
 
 layout(location = 0) out vec2 fragUV;

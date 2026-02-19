@@ -308,7 +308,7 @@ int main() {
                    static_cast<float>(swapchain.extent().height);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       hudPipeline.handle());
-    hud.draw(cmd, hudPipeline.layout(), simState, aspect);
+    hud.draw(cmd, hudPipeline.layout(), simState, aspect, vp);
 
     vkCmdEndRenderPass(cmd);
     vkEndCommandBuffer(cmd);

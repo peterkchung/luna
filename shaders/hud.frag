@@ -10,18 +10,29 @@ layout(push_constant) uniform PushConstants {
     float throttle;
     float fuelFraction;
     float aspectRatio;
+    float pitch;
+    float roll;
+    float heading;
+    float timeToSurface;
+    float progradeX;
+    float progradeY;
+    float flightPhase;
+    float missionTime;
+    float warningFlags;
+    float progradeVisible;
+    float tiltAngle;
     float _pad0;
     float _pad1;
+    float _pad2;
 } pc;
 
 layout(location = 0) out vec4 outColor;
 
+// ============================================================
+// Seven-segment display
+// ============================================================
+
 // Seven-segment encoding: bits 6..0 = a,b,c,d,e,f,g
-//  _a_
-// |f  |b
-//  _g_
-// |e  |c
-//  _d_
 const int SEG[10] = int[10](
     0x7E, 0x30, 0x6D, 0x79, 0x33,
     0x5B, 0x5F, 0x70, 0x7F, 0x7B
@@ -35,19 +46,12 @@ float renderDigit(vec2 p, int d) {
     float m = 0.08;
     float r = 0.0;
 
-    // a: top horizontal
     if ((code & 0x40) != 0 && p.y > (1.0 - t) && p.x > m && p.x < (1.0 - m)) r = 1.0;
-    // b: top-right vertical
     if ((code & 0x20) != 0 && p.x > (1.0 - t) && p.y > 0.5 && p.y < (1.0 - m)) r = 1.0;
-    // c: bottom-right vertical
     if ((code & 0x10) != 0 && p.x > (1.0 - t) && p.y > m && p.y < 0.5) r = 1.0;
-    // d: bottom horizontal
     if ((code & 0x08) != 0 && p.y < t && p.x > m && p.x < (1.0 - m)) r = 1.0;
-    // e: bottom-left vertical
     if ((code & 0x04) != 0 && p.x < t && p.y > m && p.y < 0.5) r = 1.0;
-    // f: top-left vertical
     if ((code & 0x02) != 0 && p.x < t && p.y > 0.5 && p.y < (1.0 - m)) r = 1.0;
-    // g: middle horizontal
     if ((code & 0x01) != 0 && p.y > (0.5 - t * 0.5) && p.y < (0.5 + t * 0.5) && p.x > m && p.x < (1.0 - m)) r = 1.0;
 
     return r;
@@ -82,7 +86,6 @@ float renderNumber(vec2 uv, float value, int numDigits, bool showSign) {
 
     int absVal = int(min(abs(value), 9999999.0));
 
-    // Sign character
     if (showSign && charIndex == 0) {
         if (value < 0.0) return renderMinus(digitUV);
         return 0.0;
@@ -94,13 +97,33 @@ float renderNumber(vec2 uv, float value, int numDigits, bool showSign) {
 
     int digitVal = (absVal / int(pow(10.0, float(digitPos)))) % 10;
 
-    // Leading zero suppression with ghost segments
     if (digitPos > 0 && absVal < int(pow(10.0, float(digitPos)))) {
         return renderGhost(digitUV);
     }
 
     return renderDigit(digitUV, digitVal);
 }
+
+// Render dashes for unavailable value
+float renderDashes(vec2 uv, int numDashes) {
+    float digitW = 0.6;
+    float gap = 0.1;
+    float cellW = digitW + gap;
+    float totalW = float(numDashes) * cellW;
+
+    float cellX = uv.x * totalW;
+    int charIndex = int(floor(cellX / cellW));
+    if (charIndex < 0 || charIndex >= numDashes) return 0.0;
+
+    float localX = (cellX - float(charIndex) * cellW) / digitW;
+    if (localX > 1.0 || localX < 0.0) return 0.0;
+
+    return renderMinus(vec2(localX, uv.y));
+}
+
+// ============================================================
+// Bar gauge
+// ============================================================
 
 float renderBar(vec2 uv, float fill) {
     float border = 0.06;
@@ -126,20 +149,30 @@ float renderBar(vec2 uv, float fill) {
     return max(max(outline, barFill), ticks);
 }
 
-// 3x5 bitmap font — each character encoded as 15 bits (row 0 = top, 3 pixels per row)
-// Bit layout: row0[2,1,0] row1[2,1,0] row2[2,1,0] row3[2,1,0] row4[2,1,0]
-const int CHAR_A = 0x2BED; // .#. #.# ### #.# #.#
-const int CHAR_D = 0x6B6E; // ##. #.# #.# #.# ##.
-const int CHAR_E = 0x79A7; // ### #.. ##. #.. ###
-const int CHAR_F = 0x79A4; // ### #.. ##. #.. #..
-const int CHAR_H = 0x5BED; // #.# #.# ### #.# #.#
-const int CHAR_L = 0x4927; // #.. #.. #.. #.. ###
-const int CHAR_P = 0x6BA4; // ##. #.# ##. #.. #..
-const int CHAR_R = 0x6BAD; // ##. #.# ##. #.# #.#
-const int CHAR_S = 0x388E; // .## #.. .#. ..# ##.
-const int CHAR_T = 0x7492; // ### .#. .#. .#. .#.
-const int CHAR_U = 0x5B6F; // #.# #.# #.# #.# ###
-const int CHAR_V = 0x5B52; // #.# #.# #.# .#. .#.
+// ============================================================
+// 3x5 bitmap font
+// ============================================================
+
+const int CHAR_A = 0x2BED;
+const int CHAR_B = 0x6BAE;
+const int CHAR_C = 0x3923;
+const int CHAR_D = 0x6B6E;
+const int CHAR_E = 0x79A7;
+const int CHAR_F = 0x79A4;
+const int CHAR_G = 0x396B;
+const int CHAR_H = 0x5BED;
+const int CHAR_I = 0x7497;
+const int CHAR_L = 0x4927;
+const int CHAR_M = 0x5F6D;
+const int CHAR_N = 0x5DDD;
+const int CHAR_O = 0x2B6A;
+const int CHAR_P = 0x6BA4;
+const int CHAR_R = 0x6BAD;
+const int CHAR_S = 0x388E;
+const int CHAR_T = 0x7492;
+const int CHAR_U = 0x5B6F;
+const int CHAR_V = 0x5B52;
+const int CHAR_W = 0x5B7A;
 
 float renderBitmapChar(vec2 p, int bitmap) {
     if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) return 0.0;
@@ -159,7 +192,6 @@ float renderLabel(vec2 uv, int chars[4], int numChars) {
     float cellW = charW + gap;
     float totalW = float(numChars) * cellW - gap;
 
-    // Center the label
     float startX = (1.0 - totalW / (totalW + 0.5)) * 0.5;
     float scaledX = (uv.x - startX) / (1.0 - 2.0 * startX);
 
@@ -173,12 +205,411 @@ float renderLabel(vec2 uv, int chars[4], int numChars) {
     return renderBitmapChar(vec2(localX, uv.y), chars[idx]);
 }
 
+// Render up to 4 chars centered in the UV space (for phase display, warnings)
+float renderText(vec2 uv, int chars[4], int numChars) {
+    float charW = 0.55;
+    float gap = 0.2;
+    float cellW = charW + gap;
+    float totalW = float(numChars) * cellW - gap;
+
+    float startX = 0.5 - totalW * 0.5;
+    float localX = (uv.x - startX) / totalW;
+    if (localX < 0.0 || localX > 1.0) return 0.0;
+
+    float cellX = localX * float(numChars);
+    int idx = int(floor(cellX));
+    if (idx < 0 || idx >= numChars) return 0.0;
+
+    float cx = fract(cellX) * (cellW / charW);
+    if (cx > 1.0) return 0.0;
+
+    return renderBitmapChar(vec2(cx, uv.y), chars[idx]);
+}
+
+// ============================================================
+// Attitude indicator
+// ============================================================
+
+vec4 renderAttitude(vec2 uv) {
+    // Circular clip — only draw inside the circle
+    vec2 center = vec2(0.5);
+    float dist = length(uv - center);
+    if (dist > 0.48) {
+        // Roll arc at the rim
+        if (dist > 0.48 && dist < 0.50) return vec4(0.7, 0.7, 0.7, 0.6);
+        return vec4(0.0);
+    }
+
+    // Rotate UV by roll angle
+    vec2 p = uv - center;
+    float cr = cos(-pc.roll);
+    float sr = sin(-pc.roll);
+    vec2 rotP = vec2(p.x * cr - p.y * sr, p.x * sr + p.y * cr);
+
+    // Pitch shifts horizon (normalize: 90° pitch = full indicator height)
+    float pitchOffset = pc.pitch / radians(90.0) * 0.4;
+    float horizonY = rotP.y + pitchOffset;
+
+    // Sky/ground split
+    vec3 skyColor = vec3(0.05, 0.08, 0.25);
+    vec3 groundColor = vec3(0.35, 0.20, 0.10);
+    vec3 bgColor = horizonY > 0.0 ? skyColor : groundColor;
+
+    // Horizon line
+    float horizLine = smoothstep(0.008, 0.003, abs(horizonY));
+    bgColor = mix(bgColor, vec3(0.9), horizLine);
+
+    // Pitch ladder: tick marks at 10° intervals
+    for (int i = -8; i <= 8; i++) {
+        if (i == 0) continue;
+        float tickY = rotP.y + pitchOffset - float(i) * (10.0 / 90.0) * 0.4;
+        float tickLen = (i % 3 == 0) ? 0.12 : 0.06;
+        if (abs(tickY) < 0.003 && abs(rotP.x) < tickLen) {
+            bgColor = mix(bgColor, vec3(0.8), 0.7);
+        }
+    }
+
+    // Fixed aircraft symbol (T-shape at center)
+    float sym = 0.0;
+    // Horizontal wings
+    if (abs(uv.y - 0.5) < 0.008 && abs(uv.x - 0.5) < 0.12 && abs(uv.x - 0.5) > 0.02) sym = 1.0;
+    // Center dot
+    if (length(uv - center) < 0.015) sym = 1.0;
+    // Vertical tail
+    if (abs(uv.x - 0.5) < 0.005 && uv.y > 0.5 && uv.y < 0.56) sym = 1.0;
+    bgColor = mix(bgColor, vec3(1.0, 0.8, 0.0), sym);
+
+    // Roll indicator ticks around the rim
+    float angle = atan(p.y, p.x);
+    float rollTick = 0.0;
+    for (int i = -3; i <= 3; i++) {
+        float tickAngle = radians(90.0) + float(i) * radians(30.0);
+        if (abs(angle - tickAngle) < 0.03 && dist > 0.42 && dist < 0.48) rollTick = 0.6;
+    }
+
+    // Current roll pointer (triangle at top)
+    float rollPointerAngle = radians(90.0) + pc.roll;
+    if (abs(angle - rollPointerAngle) < 0.05 && dist > 0.44 && dist < 0.48) rollTick = 1.0;
+
+    bgColor = mix(bgColor, vec3(1.0), rollTick);
+
+    return vec4(bgColor, 0.85);
+}
+
+// ============================================================
+// Heading compass
+// ============================================================
+
+vec4 renderCompass(vec2 uv) {
+    vec3 color = vec3(0.0);
+    float alpha = 0.3;
+
+    // Scrolling tape: heading maps to X position
+    float headingRange = 60.0; // degrees visible across compass width
+    float degsPerPixel = headingRange;
+
+    float hdg = pc.heading;
+    float centerDeg = hdg;
+
+    // Draw tick marks and numbers
+    float lit = 0.0;
+    for (int i = -6; i <= 6; i++) {
+        float deg = floor(centerDeg / 10.0) * 10.0 + float(i) * 10.0;
+        float offset = (deg - centerDeg) / headingRange + 0.5;
+        if (offset < 0.0 || offset > 1.0) continue;
+
+        // Tick mark
+        float tickDist = abs(uv.x - offset);
+        bool major = (mod(deg, 30.0) < 0.5 || mod(deg, 30.0) > 29.5);
+        float tickH = major ? 0.5 : 0.25;
+        if (tickDist < 0.003 && uv.y < tickH) {
+            lit = major ? 0.8 : 0.4;
+        }
+    }
+
+    // Cardinal points
+    for (int c = 0; c < 4; c++) {
+        float cardinalDeg = float(c) * 90.0;
+        // Handle wrapping
+        float diff = cardinalDeg - centerDeg;
+        if (diff > 180.0) diff -= 360.0;
+        if (diff < -180.0) diff += 360.0;
+        float offset = diff / headingRange + 0.5;
+        if (offset < 0.05 || offset > 0.95) continue;
+
+        // Render the character
+        float charW = 0.04;
+        float charX = (uv.x - offset + charW * 0.5) / charW;
+        if (charX >= 0.0 && charX <= 1.0 && uv.y > 0.45 && uv.y < 0.95) {
+            float charY = (uv.y - 0.45) / 0.5;
+            int bitmap = (c == 0) ? CHAR_N : (c == 1) ? CHAR_E : (c == 2) ? CHAR_S : CHAR_W;
+            float ch = renderBitmapChar(vec2(charX, charY), bitmap);
+            if (ch > 0.0) {
+                lit = max(lit, ch);
+            }
+        }
+    }
+
+    // Center marker (inverted triangle at top)
+    float triDist = abs(uv.x - 0.5);
+    float triY = 1.0 - (triDist * 4.0);
+    if (uv.y > triY && uv.y > 0.7 && triDist < 0.06) lit = max(lit, 1.0);
+
+    // Border lines
+    if (uv.y < 0.06 || uv.y > 0.94) lit = max(lit, 0.3);
+
+    color = vec3(0.0, 0.9, 0.5) * lit;
+    return vec4(color, alpha + lit * 0.7);
+}
+
+// ============================================================
+// Flight phase display
+// ============================================================
+
+vec4 renderPhaseDisplay(vec2 uv) {
+    int phase = int(pc.flightPhase + 0.5);
+
+    int chars[4];
+    int numChars = 3;
+    vec3 color = vec3(0.0, 1.0, 0.4);
+
+    if (phase == 0)      { chars = int[4](CHAR_O, CHAR_R, CHAR_B, 0); numChars = 3; }         // ORB
+    else if (phase == 1) { chars = int[4](CHAR_D, CHAR_S, CHAR_C, 0); numChars = 3; }         // DSC
+    else if (phase == 2) { chars = int[4](CHAR_P, CHAR_W, CHAR_R, 0); numChars = 3; }         // PWR
+    else if (phase == 3) { chars = int[4](CHAR_T, CHAR_R, CHAR_M, 0); numChars = 3; }         // TRM
+    else if (phase == 4) { chars = int[4](CHAR_L, CHAR_N, CHAR_D, 0); numChars = 3;           // LND
+                           color = vec3(1.0, 0.8, 0.0); }
+    else                 { chars = int[4](CHAR_F, CHAR_A, CHAR_I, CHAR_L); numChars = 4;      // FAIL
+                           color = vec3(1.0, 0.15, 0.0); }
+
+    float lit = renderText(uv, chars, numChars);
+    return vec4(color * lit, 0.3 + lit * 0.7);
+}
+
+// ============================================================
+// Mission elapsed time (MM:SS)
+// ============================================================
+
+vec4 renderMET(vec2 uv) {
+    vec3 c = vec3(0.7, 0.7, 0.7);
+    float bgAlpha = 0.3;
+
+    // Split: top 30% = label, bottom 70% = time
+    float labelSplit = 0.70;
+    bool inLabel = uv.y > labelSplit;
+
+    if (inLabel) {
+        vec2 labelUV = vec2(uv.x, (uv.y - labelSplit) / (1.0 - labelSplit));
+        int chars[4] = int[4](CHAR_M, CHAR_E, CHAR_T, 0);
+        float lit = renderLabel(labelUV, chars, 3) * 0.6;
+        return vec4(c * lit, bgAlpha + lit * 0.7);
+    }
+
+    vec2 instrUV = vec2(uv.x, uv.y / labelSplit);
+    int totalSec = int(pc.missionTime);
+    int minutes = totalSec / 60;
+    int seconds = totalSec % 60;
+
+    // Layout: MM:SS (5 character positions, colon in middle)
+    float digitW = 0.5;
+    float gap = 0.08;
+    float colonW = 0.2;
+    float cellW = digitW + gap;
+    float totalW = 4.0 * cellW + colonW;
+    float baseX = instrUV.x * totalW;
+
+    float lit = 0.0;
+    int positions[4] = int[4](minutes / 10, minutes % 10, seconds / 10, seconds % 10);
+
+    for (int i = 0; i < 4; i++) {
+        float posX;
+        if (i < 2) posX = float(i) * cellW;
+        else posX = 2.0 * cellW + colonW + float(i - 2) * cellW;
+
+        float localX = (baseX - posX) / digitW;
+        if (localX >= 0.0 && localX <= 1.0) {
+            lit = renderDigit(vec2(localX, instrUV.y), positions[i]);
+        }
+    }
+
+    // Colon (two dots)
+    float colonX = (baseX - 2.0 * cellW) / colonW;
+    if (colonX > 0.2 && colonX < 0.8) {
+        if (abs(instrUV.y - 0.65) < 0.06) lit = max(lit, 0.8);
+        if (abs(instrUV.y - 0.35) < 0.06) lit = max(lit, 0.8);
+    }
+
+    return vec4(c * lit, bgAlpha + lit * 0.7);
+}
+
+// ============================================================
+// Time to surface
+// ============================================================
+
+vec4 renderTTS(vec2 uv) {
+    vec3 c = vec3(0.8, 0.5, 1.0);
+    float bgAlpha = 0.3;
+
+    float labelSplit = 0.75;
+    bool inLabel = uv.y > labelSplit;
+
+    if (inLabel) {
+        vec2 labelUV = vec2(uv.x, (uv.y - labelSplit) / (1.0 - labelSplit));
+        int chars[4] = int[4](CHAR_T, CHAR_T, CHAR_S, 0);
+        float lit = renderLabel(labelUV, chars, 3) * 0.6;
+        return vec4(c * lit, bgAlpha + lit * 0.7);
+    }
+
+    vec2 instrUV = vec2(uv.x, uv.y / labelSplit);
+    float lit;
+    if (pc.timeToSurface < 0.0) {
+        lit = renderDashes(instrUV, 5);
+    } else {
+        lit = renderNumber(instrUV, min(pc.timeToSurface, 99999.0), 5, false);
+    }
+
+    return vec4(c * lit, bgAlpha + lit * 0.7);
+}
+
+// ============================================================
+// Full-screen overlay (cockpit frame, crosshair, prograde, warnings)
+// ============================================================
+
+vec4 renderOverlay(vec2 uv) {
+    float lit = 0.0;
+    vec3 color = vec3(0.0);
+
+    // Aspect-corrected UV for circular shapes
+    vec2 auv = vec2((uv.x - 0.5) * pc.aspectRatio, uv.y - 0.5);
+
+    // --- Cockpit frame: corner brackets ---
+    float bracketLen = 0.06;
+    float bracketThick = 0.002;
+    float margin = 0.02;
+
+    // Top-left
+    if ((uv.x < margin + bracketLen && abs(uv.y - (1.0 - margin)) < bracketThick) ||
+        (uv.y > 1.0 - margin - bracketLen && abs(uv.x - margin) < bracketThick)) {
+        color = vec3(0.4, 0.5, 0.4); lit = 1.0;
+    }
+    // Top-right
+    if ((uv.x > 1.0 - margin - bracketLen && abs(uv.y - (1.0 - margin)) < bracketThick) ||
+        (uv.y > 1.0 - margin - bracketLen && abs(uv.x - (1.0 - margin)) < bracketThick)) {
+        color = vec3(0.4, 0.5, 0.4); lit = 1.0;
+    }
+    // Bottom-left
+    if ((uv.x < margin + bracketLen && abs(uv.y - margin) < bracketThick) ||
+        (uv.y < margin + bracketLen && abs(uv.x - margin) < bracketThick)) {
+        color = vec3(0.4, 0.5, 0.4); lit = 1.0;
+    }
+    // Bottom-right
+    if ((uv.x > 1.0 - margin - bracketLen && abs(uv.y - margin) < bracketThick) ||
+        (uv.y < margin + bracketLen && abs(uv.x - (1.0 - margin)) < bracketThick)) {
+        color = vec3(0.4, 0.5, 0.4); lit = 1.0;
+    }
+
+    // --- Center crosshair ---
+    float chSize = 0.015;
+    float chGap = 0.005;
+    float chThick = 0.0015;
+    float adx = abs(auv.x);
+    float ady = abs(auv.y);
+    // Horizontal arms
+    if (ady < chThick && adx > chGap && adx < chSize) {
+        color = vec3(0.0, 1.0, 0.3); lit = 1.0;
+    }
+    // Vertical arms
+    if (adx < chThick && ady > chGap && ady < chSize) {
+        color = vec3(0.0, 1.0, 0.3); lit = 1.0;
+    }
+
+    // --- Prograde marker ---
+    if (pc.progradeVisible > 0.5) {
+        // Convert NDC (-1..1) to aspect-corrected screen space
+        vec2 progPos = vec2(pc.progradeX * 0.5, -pc.progradeY * 0.5); // Y flip for Vulkan
+        float progDist = length(auv - progPos);
+        float progRadius = 0.012;
+
+        // Circle
+        if (abs(progDist - progRadius) < 0.0015) {
+            color = vec3(0.0, 1.0, 0.3); lit = 1.0;
+        }
+        // Center dot
+        if (progDist < 0.003) {
+            color = vec3(0.0, 1.0, 0.3); lit = 1.0;
+        }
+        // Three lines extending from circle (top, left, right)
+        float lineLen = 0.008;
+        if (abs(auv.x - progPos.x) < 0.001 && auv.y - progPos.y > progRadius && auv.y - progPos.y < progRadius + lineLen) {
+            color = vec3(0.0, 1.0, 0.3); lit = 1.0;
+        }
+        if (abs(auv.y - progPos.y) < 0.001 && progPos.x - auv.x > progRadius && progPos.x - auv.x < progRadius + lineLen) {
+            color = vec3(0.0, 1.0, 0.3); lit = 1.0;
+        }
+        if (abs(auv.y - progPos.y) < 0.001 && auv.x - progPos.x > progRadius && auv.x - progPos.x < progRadius + lineLen) {
+            color = vec3(0.0, 1.0, 0.3); lit = 1.0;
+        }
+    }
+
+    // --- Warning indicators ---
+    int warnings = int(pc.warningFlags + 0.5);
+    float flashRate = 3.0;
+    bool flashOn = fract(pc.missionTime * flashRate) > 0.35;
+
+    if (warnings > 0 && flashOn) {
+        float warnY = 0.18;
+        float warnH = 0.025;
+        int warnCount = 0;
+
+        // Count active warnings for centering
+        for (int b = 0; b < 3; b++) {
+            if ((warnings & (1 << b)) != 0) warnCount++;
+        }
+
+        float warnW = 0.08;
+        float warnGap = 0.02;
+        float totalWarnW = float(warnCount) * (warnW + warnGap) - warnGap;
+        float warnStartX = 0.5 - totalWarnW * 0.5;
+
+        int warnIdx = 0;
+        for (int b = 0; b < 3; b++) {
+            if ((warnings & (1 << b)) == 0) continue;
+
+            float wx = warnStartX + float(warnIdx) * (warnW + warnGap);
+            if (uv.x >= wx && uv.x <= wx + warnW && uv.y >= warnY && uv.y <= warnY + warnH) {
+                vec2 wuv = vec2((uv.x - wx) / warnW, (uv.y - warnY) / warnH);
+                int wchars[4];
+                int wnum;
+                vec3 wcolor;
+
+                if (b == 0) { wchars = int[4](CHAR_F, CHAR_U, CHAR_E, CHAR_L); wnum = 4; wcolor = vec3(1.0, 0.1, 0.0); }
+                else if (b == 1) { wchars = int[4](CHAR_R, CHAR_A, CHAR_T, CHAR_E); wnum = 4; wcolor = vec3(1.0, 0.6, 0.0); }
+                else { wchars = int[4](CHAR_T, CHAR_I, CHAR_L, CHAR_T); wnum = 4; wcolor = vec3(1.0, 0.6, 0.0); }
+
+                float wlit = renderText(wuv, wchars, wnum);
+                if (wlit > 0.0) {
+                    color = wcolor;
+                    lit = wlit;
+                }
+            }
+            warnIdx++;
+        }
+    }
+
+    if (lit > 0.0) return vec4(color, lit * 0.9);
+    return vec4(0.0);
+}
+
+// ============================================================
+// Main
+// ============================================================
+
 void main() {
     int id = int(fragInstrumentId + 0.5);
     float bgAlpha = 0.3;
     vec4 color = vec4(0.0, 0.0, 0.0, bgAlpha);
 
-    // Split UV: top 25% = label, bottom 75% = instrument
+    // Split UV: top 25% = label, bottom 75% = instrument (for labeled panels)
     float labelSplit = 0.75;
     bool inLabel = fragUV.y > labelSplit;
     vec2 instrUV = vec2(fragUV.x, fragUV.y / labelSplit);
@@ -245,6 +676,30 @@ void main() {
             lit = renderBar(instrUV, pc.fuelFraction);
         }
         color = vec4(c * lit, bgAlpha + lit * 0.7);
+    }
+    else if (id == 5) {
+        // Attitude indicator
+        color = renderAttitude(fragUV);
+    }
+    else if (id == 6) {
+        // Heading compass
+        color = renderCompass(fragUV);
+    }
+    else if (id == 7) {
+        // Flight phase
+        color = renderPhaseDisplay(fragUV);
+    }
+    else if (id == 8) {
+        // Mission elapsed time
+        color = renderMET(fragUV);
+    }
+    else if (id == 9) {
+        // Time to surface
+        color = renderTTS(fragUV);
+    }
+    else if (id == 10) {
+        // Full-screen overlay
+        color = renderOverlay(fragUV);
     }
 
     outColor = color;
