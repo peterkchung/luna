@@ -65,6 +65,8 @@ public:
               const luna::sim::SimState& simState, float aspectRatio,
               const glm::mat4& viewProj) const;
 
+    void releaseGPU() { mesh_.release(); }
+
 private:
     luna::scene::Mesh mesh_;
 };

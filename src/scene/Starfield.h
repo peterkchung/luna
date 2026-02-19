@@ -27,6 +27,8 @@ public:
     void draw(VkCommandBuffer cmd, VkPipelineLayout layout,
               const glm::mat4& viewProj) const;
 
+    void releaseGPU() { mesh_.release(); }
+
 private:
     Mesh mesh_;
 };

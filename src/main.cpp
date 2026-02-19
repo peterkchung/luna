@@ -63,7 +63,7 @@ int main() {
   Swapchain swapchain(ctx);
   RenderPass renderPass(ctx, swapchain);
   CommandPool commandPool(ctx, MAX_FRAMES_IN_FLIGHT);
-  Sync sync(ctx);
+  Sync sync(ctx, swapchain.imageCount());
 
   luna::input::InputManager input(ctx.window());
   luna::camera::Camera camera;
@@ -73,8 +73,8 @@ int main() {
   // horizon
   double startAlt = luna::util::LUNAR_RADIUS + 100'000.0;
   camera.setPosition(glm::dvec3(0.0, -startAlt, 0.0));
-  // Pitch toward the Moon (+Y direction) to see the horizon
-  camera.setRotation(glm::radians(10.0), 0.0);
+  // Face orbital velocity direction (+X) with slight pitch toward the Moon
+  camera.setRotation(glm::radians(10.0), glm::radians(-90.0));
 
   // Terrain pipeline
   auto terrainPipeline =
@@ -154,13 +154,14 @@ int main() {
   luna::sim::Physics physics;
   physics.setTerrainQuery(luna::sim::sampleTerrainHeight);
 
-  bool attachedToLander = false;
+  bool attachedToLander = true;
 
   // Sun direction (hardcoded: from upper-right in world space)
   glm::vec3 sunDir3 = glm::normalize(glm::vec3(0.5f, 0.8f, 0.3f));
   glm::vec4 sunDir(sunDir3, 0.0f);
 
   uint32_t currentFrame = 0;
+  uint32_t currentSemaphore = 0;
   double lastTime = glfwGetTime();
 
   while (!glfwWindowShouldClose(ctx.window())) {
@@ -235,11 +236,13 @@ int main() {
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(
         ctx.device(), swapchain.handle(), FENCE_TIMEOUT,
-        sync.imageAvailable(currentFrame), VK_NULL_HANDLE, &imageIndex);
+        sync.imageAvailable(currentSemaphore), VK_NULL_HANDLE, &imageIndex);
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
       if (!swapchain.recreate())
         break;
       renderPass.recreateFramebuffers(swapchain);
+      sync.recreateSemaphores(swapchain.imageCount());
+      currentSemaphore = 0;
       continue;
     }
     if (result == VK_TIMEOUT || result == VK_NOT_READY)
@@ -314,8 +317,8 @@ int main() {
     vkEndCommandBuffer(cmd);
 
     // Submit
-    VkSemaphore waitSems[] = {sync.imageAvailable(currentFrame)};
-    VkSemaphore signalSems[] = {sync.renderFinished(currentFrame)};
+    VkSemaphore waitSems[] = {sync.imageAvailable(currentSemaphore)};
+    VkSemaphore signalSems[] = {sync.renderFinished(currentSemaphore)};
     VkPipelineStageFlags waitStages[] = {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
@@ -348,9 +351,12 @@ int main() {
       if (!swapchain.recreate())
         break;
       renderPass.recreateFramebuffers(swapchain);
+      sync.recreateSemaphores(swapchain.imageCount());
+      currentSemaphore = 0;
     }
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+    currentSemaphore = (currentSemaphore + 1) % sync.semaphoreCount();
   }
 
   // Hide window immediately so the OS doesn't show "not responding"
@@ -364,10 +370,8 @@ int main() {
 
   vkDeviceWaitIdle(ctx.device());
 
-  // Release GPU handles without individual Vulkan destroy calls — the hundreds
-  // of per-node vkDestroyBuffer/vkFreeMemory calls are the shutdown bottleneck.
-  // vkDestroyDevice handles bulk cleanup.
-  moon.releaseGPU();
+  // Normal C++ destructors handle buffer cleanup in reverse declaration order
+  // (moon → starfield → hud → pipelines → ... → ctx/vkDestroyDevice).
 
   luna::sim::shutdownTerrain();
   LOG_INFO("Luna shutting down");
