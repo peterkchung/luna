@@ -16,15 +16,18 @@ Luna aims to answer this through geometric and physical fidelity: a spherical Mo
 - Skirt geometry to fill T-junction gaps between LOD levels
 - Camera-relative rendering (double-precision offsets, no jitter at Moon scale)
 - Frustum culling (Gribb/Hartmann plane extraction, bounding sphere test)
-- Flat terrain placeholder (procedural noise removed, NASA LOLA data planned)
-- Directional sun lighting with lat/lon gridlines for visual reference
+- NASA LOLA terrain data (16 ppd equirectangular heightmap with bilinear interpolation)
+- Topographic contour lines (500m spacing)
+- Directional sun lighting
 - Batched GPU uploads via shared staging buffer (StagingBatch)
 - Quaternion camera with radial-up mouse look and altitude-scaled movement
 - Procedural starfield (~5,000 point sprites)
 - 6DOF rigid body physics (lunar gravity, thrust, fuel consumption, collision)
-- Free-fly and lander-attached camera modes
+- Free-fly and lander-attached camera modes (starts attached, facing orbital velocity)
+- Screen-space HUD (seven-segment displays, bar gauges, attitude indicator, heading compass, prograde marker, cockpit frame)
+- Per-swapchain-image semaphores for correct resize handling
 
-**In progress:** See [ROADMAP.md](ROADMAP.md) for the full development plan.
+**Next up:** See [ROADMAP.md](ROADMAP.md) for the full development plan.
 
 ## Controls
 
@@ -61,6 +64,8 @@ luna/
 │   │   ├── ChunkGenerator    # Per-patch mesh generation
 │   │   ├── Starfield         # Procedural star point cloud
 │   │   └── Mesh              # Vertex/index buffer pair
+│   ├── hud/                  # Screen-space HUD overlay
+│   │   └── Hud              # Flight instruments, attitude, cockpit frame
 │   ├── sim/                  # Simulation (no Vulkan dependency)
 │   │   ├── SimState          # Position, velocity, orientation, fuel
 │   │   ├── Physics           # 6DOF rigid body, gravity, thrust
@@ -121,7 +126,7 @@ Key architectural decisions:
 - **Skirt geometry** on patch edges to fill T-junction gaps between LOD levels
 - **Reversed-Z depth buffer** (D32_SFLOAT) for precision across 0.5m–2,000km range
 - **Push constants only** (no descriptor sets yet) — keeps the Vulkan surface area minimal
-- **Camera starts on -Y axis** where Vulkan's Y-down convention naturally places the Moon at the screen bottom with no orientation workarounds
+- **Camera starts on -Y axis facing orbital velocity (+X)** where Vulkan's Y-down convention naturally places the Moon at the screen bottom with no orientation workarounds
 
 ## License
 

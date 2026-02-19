@@ -83,15 +83,26 @@ Development phases for building a realistic Artemis-era lunar landing simulator.
 - [x] Topographic contour lines (500m spacing, fwidth/smoothstep)
 - [x] Additive bounding radius margin for terrain displacement (±12km)
 
----
-
-## In Progress
-
 ### Phase G — HUD (Core Flight Instruments)
-- [ ] Seven-segment displays for altitude, vertical speed, surface speed
-- [ ] Bar gauges for throttle and fuel
-- [ ] Procedural rendering (no textures) — all push-constant driven
-- [ ] Screen-space overlay pipeline (alpha blend, no depth test)
+- [x] Seven-segment displays for altitude, vertical speed, surface speed
+- [x] Bar gauges for throttle and fuel
+- [x] Procedural rendering (no textures) — all push-constant driven
+- [x] Screen-space overlay pipeline (alpha blend, no depth test)
+
+### Phase G2 — HUD (Advanced Instruments + Cockpit Frame)
+- [x] Cockpit frame (corner brackets, center crosshair)
+- [x] Attitude indicator (pitch/roll horizon, pitch ladder, roll ticks)
+- [x] Heading compass (scrolling tape with cardinal points)
+- [x] Prograde marker (velocity vector screen projection)
+- [x] Flight phase display (ORB/DSC/PWR/TRM/LND/FAIL)
+- [x] Mission elapsed time (MM:SS seven-segment)
+- [x] Time to surface countdown
+- [x] Warning indicators (FUEL/RATE/TILT flashing)
+
+### Infrastructure Fixes
+- [x] Per-swapchain-image semaphores for correct resize handling
+- [x] Bulk GPU release for fast cubesphere shutdown
+- [x] Camera starts attached to lander, facing orbital velocity (+X)
 
 ---
 
@@ -99,9 +110,7 @@ Development phases for building a realistic Artemis-era lunar landing simulator.
 
 Features beyond the core simulation phases, in priority order.
 
-### HUD Phase 2 — Cockpit + Advanced Indicators
-- Cockpit frame geometry (Starship HLS window framing)
-- Attitude indicator / NavBall
+### HUD Phase 3 — Guidance Overlays
 - Trajectory prediction overlay (forward-integrated arc)
 - Landing target marker (world-to-screen projection)
 - Fuel gauge with estimated burn time remaining

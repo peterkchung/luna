@@ -33,8 +33,8 @@ luna/
 │   ├── cockpit.frag
 │   ├── particle.vert           # Engine exhaust particles (future)
 │   ├── particle.frag
-│   ├── hud.vert                # Screen-space telemetry overlay (future)
-│   ├── hud.frag
+│   ├── hud.vert *              # Screen-space HUD overlay
+│   ├── hud.frag *
 │   └── trajectory.vert/.frag   # Predicted flight path overlay (future)
 │
 ├── src/
@@ -49,7 +49,7 @@ luna/
 │   │   ├── CommandPool.h/cpp        # Command buffer management
 │   │   ├── ShaderModule.h/cpp       # SPIR-V loading
 │   │   ├── Image.h/cpp              # Image/texture creation + views
-│   │   └── Sync.h/cpp               # Fences, semaphores, frame sync
+│   │   └── Sync.h/cpp               # Fences, per-image semaphores, frame sync
 │   │
 │   ├── scene/ *                # Scene objects and management
 │   │   ├── Mesh.h/cpp *             # Vertex/index buffer pair + draw
@@ -76,10 +76,8 @@ luna/
 │   │   ├── Camera.h/cpp *           # Quaternion camera, reversed-Z projection
 │   │   └── CameraController.h/cpp * # Radial-up mouse look, altitude-scaled speed
 │   │
-│   ├── hud/                    # Heads-up display (future)
-│   │   ├── HudRenderer.h/cpp
-│   │   ├── Instruments.h/cpp
-│   │   └── NavBall.h/cpp
+│   ├── hud/ *                  # Heads-up display
+│   │   └── Hud.h/cpp *              # Flight instruments, attitude, cockpit frame
 │   │
 │   └── util/ *                 # Shared utilities
 │       ├── Math.h *                 # GLM config, double-precision types, constants
@@ -143,6 +141,8 @@ cmdPool.endOneShot(cmd, queue);           // submit all copies at once
 ```
 Meshes replaced during batched uploads are deferred in `deferredDestroy_` until after the transfer command buffer completes, preventing use-after-free on VRAM buffers still referenced by in-flight copy commands.
 
+**Sync** manages per-frame fences (`MAX_FRAMES_IN_FLIGHT = 2`) and per-swapchain-image semaphores. Semaphores are sized to the swapchain image count (typically 3–4) rather than to `MAX_FRAMES_IN_FLIGHT`, because the presentation engine holds a semaphore until its image is re-acquired — independent of fence state. A separate `currentSemaphore` index cycles through the image count. Semaphores are destroyed and recreated on swapchain recreation.
+
 ### scene/ — Renderable Objects
 
 Each scene object builds its geometry and records draw commands into a command buffer.
@@ -165,6 +165,21 @@ The cubesphere pipeline:
 - Generates skirt geometry on all 4 edges to fill T-junction gaps
 
 **Starfield** renders ~5,000 procedural stars as point sprites. Positions are unit direction vectors on a conceptual sphere. Rendered before terrain with depth write OFF.
+
+### hud/ — Heads-Up Display
+
+**Hud** renders screen-space flight instruments as procedural geometry (no textures). All rendering is driven by push constants containing telemetry from `SimState`. The fragment shader implements each instrument type via an `instrumentId` selector:
+
+- **Seven-segment displays** — altitude, vertical speed, surface speed, mission elapsed time, time to surface
+- **Bar gauges** — throttle level, fuel fraction
+- **Attitude indicator** — pitch/roll horizon with pitch ladder and roll ticks
+- **Heading compass** — scrolling tape with cardinal points (N/E/S/W)
+- **Prograde marker** — velocity vector projected to screen coordinates
+- **Cockpit frame** — corner brackets, center crosshair
+- **Warning indicators** — FUEL/RATE/TILT with flashing
+- **Flight phase** — ORB/DSC/PWR/TRM/LND/FAIL text display
+
+The HUD pipeline uses alpha blending, no depth test, and `VK_CULL_MODE_NONE`. Panel geometry is a flat quad mesh with screen-space UV coordinates, rendered after all world geometry.
 
 ### sim/ — Pure Simulation
 
@@ -213,7 +228,7 @@ Why double precision? At orbital altitude (~100km), Moon-centered coordinates ar
 - `getRotationOnlyViewMatrix()` — rotation without translation (for camera-relative rendering)
 - `getProjectionMatrix()` — reversed-Z, near=0.5m, far=2,000,000m
 
-The camera starts on the **-Y axis** at 100km altitude. This is deliberate: Vulkan's clip space has +Y pointing downward on screen. By positioning the camera on -Y, its default up (+Y) points toward the Moon center, which Vulkan renders at the screen bottom. Moon below, stars above — no viewport flip or roll correction needed.
+The camera starts on the **-Y axis** at 100km altitude, **facing orbital velocity (+X)**. This is deliberate: Vulkan's clip space has +Y pointing downward on screen. By positioning the camera on -Y, its default up (+Y) points toward the Moon center, which Vulkan renders at the screen bottom. Moon below, stars above — no viewport flip or roll correction needed. The initial yaw of -90° aligns the view with the prograde direction, giving an immediate sense of orbital motion.
 
 **CameraController** modes:
 1. **Free-fly** — WASD + mouse look with radial up vector. Speed scales with altitude.
@@ -257,14 +272,14 @@ Vertex positions in each chunk are relative to the chunk center (~50m max magnit
 3. **Particles** — exhaust (blending ON, depth write OFF) — future
 4. **Lander** — only in chase/free mode (depth write ON) — future
 5. **Cockpit frame** — cockpit mode only (depth test OFF, renders on top) — future
-6. **HUD** — screen-space instruments (depth test OFF, own projection) — future
+6. **HUD** — screen-space instruments (depth test OFF, alpha blending, push-constant driven)
 
 ### Coordinate System
 
 - **World origin:** Moon center
 - **World units:** meters
 - **World axes:** +X toward 0°N 0°E, +Y toward north pole, +Z toward 0°N 90°E (IAU_MOON frame)
-- **Camera start:** -Y axis (100km above surface), default up (+Y) naturally aligns with Vulkan's Y-down
+- **Camera start:** -Y axis (100km above surface), facing +X (orbital velocity), Vulkan Y-down aligns Moon below
 - **Lander local:** +X right, +Y up (Raptor thrust direction), +Z forward
 - **Chunk local:** positions relative to chunk center on the sphere surface
 

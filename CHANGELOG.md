@@ -4,6 +4,99 @@ All notable changes to Luna are documented here, grouped by development phase.
 
 ---
 
+## Infrastructure Fixes
+
+### 6e047b4 — perf: restore bulk GPU release for cubesphere shutdown
+- Re-add `moon.releaseGPU()` to avoid hundreds of individual vkDestroyBuffer/vkFreeMemory calls on exit
+- Starfield and HUD use normal destructors (few buffers, no performance issue)
+
+### 5098b2c — fix: per-image semaphores, proper buffer cleanup, and aligned initial camera
+- Change Sync from fixed MAX_FRAMES_IN_FLIGHT semaphore arrays to per-swapchain-image vectors
+- Add `recreateSemaphores()` called after every swapchain recreation
+- Separate `currentSemaphore` index cycling through image count (independent of frame index)
+- Camera starts attached to lander, facing orbital velocity (+X) via `setRotation(10°, -90°)`
+
+---
+
+## Phase G2 — HUD (Advanced Instruments + Cockpit Frame)
+
+### 0946d3d — fix: remove broken HUD text aspect correction and adjust panel dimensions
+- Remove `getPanelPixAspect()` and all Y-axis text correction from fragment shader
+- Characters fill cells naturally instead of being crushed by wide-panel aspect ratios
+
+### e8db40c — feat: HUD phase 2 — attitude indicator, compass, flight phase, guidance, cockpit frame
+- Cockpit frame with corner brackets and center crosshair
+- Attitude indicator showing pitch/roll horizon with pitch ladder and roll ticks
+- Heading compass with scrolling tape and cardinal points (N/E/S/W)
+- Prograde marker projecting velocity vector onto screen
+- Flight phase display (ORB/DSC/PWR/TRM/LND/FAIL)
+- Mission elapsed time as MM:SS seven-segment display
+- Time to surface countdown
+- Warning indicators (FUEL/RATE/TILT) with flashing
+
+---
+
+## Phase G — HUD (Core Flight Instruments)
+
+### 8f912c6 — fix: add HUD labels, reduce fence timeout, deepen terrain skirts
+- Add text labels to HUD instrument panels
+- Reduce fence timeout for more responsive close handling
+
+### f542726 — feat: add HUD with seven-segment displays and bar gauges
+- Screen-space HUD pipeline (alpha blend, no depth test, push-constant driven)
+- Seven-segment displays for altitude, vertical speed, surface speed
+- Bar gauges for throttle and fuel fraction
+- HudVertex format with screen UV, panel-local UV, and instrument ID selector
+
+---
+
+## Artemis Modernization
+
+### f6674d8 — refactor: modernize from Apollo LM to Artemis Starship HLS
+- Update SimState parameters: dry mass 85,000 kg, fuel 200,000 kg, 2× Raptor Vacuum (4.4 MN, Isp 380s)
+- Update landing criteria: vertical < 4 m/s, surface < 2 m/s
+
+---
+
+## Phase F — Real Terrain Data
+
+### 75d0b57 — fix: shutdown freeze, terrain skirt gaps, and contour LOD seams
+- Fix shutdown freeze during swapchain destruction
+
+### d1a5178 — feat: integrate NASA LOLA heightmap with terrain displacement and LOD improvements
+- Load NASA LOLA 16 ppd equirectangular TIFF (ldem_16.tif)
+- Minimal TIFF parser with no external library dependency
+- Bilinear interpolation with longitude wrapping
+- Vertex displacement by real elevation data
+- Central differencing normals from heightmap samples
+
+### 9ade738 — feat: add topographic contour lines and fix sphere direction for gridlines
+- Topographic contour lines at 500m spacing using fwidth/smoothstep
+- Pass sphere direction as varying for stable derivatives
+
+### 2ba5130 — style: remove lat/lon gridlines, keep only topographic contour lines
+
+---
+
+## LOD Performance + Stability
+
+### 210ae95 — perf: lazy staging batch allocation to eliminate per-frame Vulkan overhead
+- Skip StagingBatch allocation when no LOD splits occur (zero overhead when converged)
+
+### 93cb673 — fix: breadth-first LOD refinement to eliminate depth-first budget starvation
+
+### 1e78d5e — perf: sort quadtree children by distance before recursion for balanced LOD
+
+### 6c1c3b9 — perf: frustum-aware LOD splits so budget targets visible patches only
+
+### 8afce65 — perf: bulk GPU resource release at shutdown to avoid per-buffer Vulkan calls
+
+### 0dd3453 — fix: breadth-first LOD refinement to eliminate depth-first budget starvation
+
+### 52678c9 — fix: robust shutdown with immediate close check and Vulkan call timeouts
+
+---
+
 ## Performance + Visual Refinement
 
 ### 437df82 — style: brighten terrain and add lat/lon gridlines
