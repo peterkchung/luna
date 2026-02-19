@@ -27,10 +27,12 @@ Hud::Hud(const luna::core::VulkanContext& ctx,
     std::vector<HudVertex> vertices;
     std::vector<uint32_t> indices;
 
-    // === Bottom instruments (existing) ===
+    // === Bottom instruments ===
+    // Panel dimensions chosen so text rendering has reasonable pixel aspect.
+    // On 16:9: pixelAspect = (W * 1.78) / H — should be 2-4 for readable text.
 
     // Altitude — bottom-left, 7 digits + label
-    addQuad(vertices, indices, 0.02f, 0.06f, 0.22f, 0.07f, 0.0f);
+    addQuad(vertices, indices, 0.02f, 0.06f, 0.22f, 0.08f, 0.0f);
 
     // Vertical speed — below altitude, sign + 5 digits + label
     addQuad(vertices, indices, 0.02f, 0.00f, 0.18f, 0.06f, 1.0f);
@@ -46,23 +48,23 @@ Hud::Hud(const luna::core::VulkanContext& ctx,
 
     // === Phase 2 instruments ===
 
-    // Full-screen overlay — MUST be drawn first (behind other panels)
+    // Full-screen overlay (cockpit frame, crosshair, prograde, warnings)
     addQuad(vertices, indices, 0.0f, 0.0f, 1.0f, 1.0f, 10.0f);
 
-    // Attitude indicator — left side, square
-    addQuad(vertices, indices, 0.02f, 0.22f, 0.14f, 0.14f, 5.0f);
+    // Attitude indicator — left side (W:H ≈ 9:16 in UV → ~1:1 in pixels on 16:9)
+    addQuad(vertices, indices, 0.02f, 0.24f, 0.12f, 0.20f, 5.0f);
 
     // Heading compass — top-center horizontal strip
-    addQuad(vertices, indices, 0.30f, 0.95f, 0.40f, 0.03f, 6.0f);
+    addQuad(vertices, indices, 0.20f, 0.94f, 0.60f, 0.04f, 6.0f);
 
     // Flight phase — top-left
-    addQuad(vertices, indices, 0.02f, 0.93f, 0.12f, 0.04f, 7.0f);
+    addQuad(vertices, indices, 0.02f, 0.90f, 0.14f, 0.08f, 7.0f);
 
     // Mission elapsed time — top-right
-    addQuad(vertices, indices, 0.84f, 0.93f, 0.14f, 0.04f, 8.0f);
+    addQuad(vertices, indices, 0.82f, 0.90f, 0.16f, 0.08f, 8.0f);
 
-    // Time to surface — below altitude stack
-    addQuad(vertices, indices, 0.02f, 0.13f, 0.14f, 0.06f, 9.0f);
+    // Time to surface — below altitude stack (gap above ALT)
+    addQuad(vertices, indices, 0.02f, 0.15f, 0.14f, 0.07f, 9.0f);
 
     mesh_ = luna::scene::Mesh(ctx, cmdPool,
                                vertices.data(),
@@ -100,7 +102,6 @@ void Hud::draw(VkCommandBuffer cmd, VkPipelineLayout layout,
     pc.tiltAngle = glm::degrees(pc.pitch);
 
     // Roll: rotation of body around the thrust axis relative to local vertical
-    // Project localUp onto the plane perpendicular to bodyUp
     glm::dvec3 localUpInBody = localUp - glm::dot(localUp, bodyUp) * bodyUp;
     double localUpLen = glm::length(localUpInBody);
     if (localUpLen > 1e-6) {
