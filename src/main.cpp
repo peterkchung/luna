@@ -370,8 +370,10 @@ int main() {
 
   vkDeviceWaitIdle(ctx.device());
 
-  // Normal C++ destructors handle buffer cleanup in reverse declaration order
-  // (moon → starfield → hud → pipelines → ... → ctx/vkDestroyDevice).
+  // Bulk-release cubesphere GPU handles to avoid hundreds of individual
+  // vkDestroyBuffer/vkFreeMemory calls. vkDestroyDevice handles cleanup.
+  // (Starfield and HUD have few buffers — normal destructors handle those.)
+  moon.releaseGPU();
 
   luna::sim::shutdownTerrain();
   LOG_INFO("Luna shutting down");
