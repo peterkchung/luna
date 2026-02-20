@@ -59,7 +59,8 @@ private:
     static constexpr uint32_t PATCH_GRID           = 17;
     static constexpr double   SPLIT_THRESHOLD      = 4.0;
     static constexpr double   MERGE_THRESHOLD      = 2.0;
-    static constexpr uint32_t MAX_SPLITS_PER_FRAME = 64;
+    static constexpr uint32_t MAX_SPLITS_PER_FRAME   = 64;
+    static constexpr uint32_t MAX_DESTROYS_PER_FRAME = 8;
 
     // Max meshes per batch before flushing the command buffer
     static constexpr uint32_t MESHES_PER_BATCH     = 512;

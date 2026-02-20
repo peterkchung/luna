@@ -176,7 +176,11 @@ void CubesphereBody::update(const glm::dvec3& cameraPos,
         cmdPool_->endOneShot(cmd, ctx_->graphicsQueue());
     }
 
-    deferredDestroy_.clear();
+    // Amortize GPU resource destruction across frames to avoid hitches
+    uint32_t destroyCount = glm::min(static_cast<uint32_t>(deferredDestroy_.size()),
+                                      MAX_DESTROYS_PER_FRAME);
+    deferredDestroy_.erase(deferredDestroy_.begin(),
+                           deferredDestroy_.begin() + destroyCount);
 }
 
 void CubesphereBody::collectCandidates(QuadtreeNode& node, const glm::dvec3& cameraPos,
