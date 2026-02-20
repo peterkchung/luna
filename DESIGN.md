@@ -139,7 +139,7 @@ auto buf = Buffer::createStaticBatch(ctx, cmd, usage, data, size, staging); // s
 staging.end();                            // unmap
 cmdPool.endOneShot(cmd, queue);           // submit all copies at once
 ```
-Meshes replaced during batched uploads are deferred in `deferredDestroy_` until after the transfer command buffer completes, preventing use-after-free on VRAM buffers still referenced by in-flight copy commands.
+Meshes replaced during batched uploads are deferred in `deferredDestroy_` until after the transfer command buffer completes, preventing use-after-free on VRAM buffers still referenced by in-flight copy commands. Deferred meshes are destroyed at most `MAX_DESTROYS_PER_FRAME` (8) per update to amortize the cost of `vkDestroyBuffer`/`vkFreeMemory` calls and avoid frame hitches when many nodes merge at once.
 
 **Sync** manages per-frame fences (`MAX_FRAMES_IN_FLIGHT = 2`) and per-swapchain-image semaphores. Semaphores are sized to the swapchain image count (typically 3–4) rather than to `MAX_FRAMES_IN_FLIGHT`, because the presentation engine holds a semaphore until its image is re-acquired — independent of fence state. A separate `currentSemaphore` index cycles through the image count. Semaphores are destroyed and recreated on swapchain recreation.
 

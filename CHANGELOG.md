@@ -6,6 +6,10 @@ All notable changes to Luna are documented here, grouped by development phase.
 
 ## Infrastructure Fixes
 
+### 9e1ae04 — perf: amortize deferred mesh destruction across frames to avoid hitches
+- Deferred meshes from LOD merges are now destroyed at most `MAX_DESTROYS_PER_FRAME` (8) per frame
+- Prevents frame hitches when many nodes merge at once during camera movement
+
 ### 7792b4f — fix: properly destroy GPU resources in bulk release to silence validation errors
 - `Buffer::release()` now calls `vkDestroyBuffer` and `vkFreeMemory` before zeroing handles
 - Eliminates Vulkan validation errors for leaked VkBuffer/VkDeviceMemory at shutdown
