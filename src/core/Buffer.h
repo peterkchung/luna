@@ -43,8 +43,8 @@ public:
     void* map();
     void  unmap();
 
-    // Relinquish ownership without Vulkan destroy calls — for bulk shutdown
-    // where vkDestroyDevice handles cleanup.
+    // Destroy GPU resources without running the C++ destructor chain — for bulk
+    // shutdown where the owning tree is torn down separately.
     void release();
 
 private:

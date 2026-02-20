@@ -370,9 +370,8 @@ int main() {
 
   vkDeviceWaitIdle(ctx.device());
 
-  // Bulk-release cubesphere GPU handles to avoid hundreds of individual
-  // vkDestroyBuffer/vkFreeMemory calls. vkDestroyDevice handles cleanup.
-  // (Starfield and HUD have few buffers — normal destructors handle those.)
+  // Free cubesphere GPU resources in a flat traversal before the destructor
+  // chain tears down the quadtree — avoids deep recursive Vulkan calls.
   moon.releaseGPU();
 
   luna::sim::shutdownTerrain();

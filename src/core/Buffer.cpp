@@ -173,6 +173,8 @@ void Buffer::unmap() {
 }
 
 void Buffer::release() {
+    if (buffer_) vkDestroyBuffer(device_, buffer_, nullptr);
+    if (memory_) vkFreeMemory(device_, memory_, nullptr);
     buffer_ = VK_NULL_HANDLE;
     memory_ = VK_NULL_HANDLE;
     size_   = 0;
