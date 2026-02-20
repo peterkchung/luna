@@ -50,8 +50,8 @@ public:
 
     uint32_t activeNodeCount() const { return activeNodes_; }
 
-    // Release all GPU handles without individual Vulkan destroy calls.
-    // Call after vkDeviceWaitIdle — vkDestroyDevice handles actual cleanup.
+    // Destroy all GPU buffers/memory in a flat traversal — avoids the deep
+    // recursive destructor chain that freezes on shutdown. Call after vkDeviceWaitIdle.
     void releaseGPU();
 
 private:

@@ -6,6 +6,11 @@ All notable changes to Luna are documented here, grouped by development phase.
 
 ## Infrastructure Fixes
 
+### 7792b4f — fix: properly destroy GPU resources in bulk release to silence validation errors
+- `Buffer::release()` now calls `vkDestroyBuffer` and `vkFreeMemory` before zeroing handles
+- Eliminates Vulkan validation errors for leaked VkBuffer/VkDeviceMemory at shutdown
+- Flat `releaseGPU()` traversal avoids the deep recursive destructor chain that caused freezes
+
 ### 6e047b4 — perf: restore bulk GPU release for cubesphere shutdown
 - Re-add `moon.releaseGPU()` to avoid hundreds of individual vkDestroyBuffer/vkFreeMemory calls on exit
 - Starfield and HUD use normal destructors (few buffers, no performance issue)

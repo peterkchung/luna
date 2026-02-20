@@ -101,7 +101,7 @@ Development phases for building a realistic Artemis-era lunar landing simulator.
 
 ### Infrastructure Fixes
 - [x] Per-swapchain-image semaphores for correct resize handling
-- [x] Bulk GPU release for fast cubesphere shutdown
+- [x] Bulk GPU release for clean cubesphere shutdown (validation-clean)
 - [x] Camera starts attached to lander, facing orbital velocity (+X)
 
 ---
